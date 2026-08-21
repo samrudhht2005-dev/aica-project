@@ -1,0 +1,56 @@
+<div class="sidebar sidebar-pos" data-sidebar-mode="pos">
+    <div class="logo-container">
+        <i class="bi bi-qr-code-scan logo-icon"></i>
+        <h2 class="logo">AICA POS</h2>
+    </div>
+
+    <div class="nav-links" id="aicaNavLinks">
+        <a href="/pos#checkout" class="pos-nav-link {% if active_page == 'pos' %}active{% endif %}" data-pos-tab="checkout" data-i18n="nav.posCheckout">
+            <i class="bi bi-cart-check-fill"></i> <span>Checkout</span>
+        </a>
+        <a href="/pos#overview" class="pos-nav-link" data-pos-tab="overview" data-i18n="nav.posOverview">
+            <i class="bi bi-speedometer2"></i> <span>Sales Overview</span>
+        </a>
+        <a href="/pos#analytics" class="pos-nav-link" data-pos-tab="analytics" data-i18n="nav.posAnalytics">
+            <i class="bi bi-bar-chart-line"></i> <span>Analytics</span>
+        </a>
+        <a href="/pos#history" class="pos-nav-link" data-pos-tab="history" data-i18n="nav.posHistory">
+            <i class="bi bi-clock-history"></i> <span>Sales History</span>
+        </a>
+        <a href="/pos#invoices" class="pos-nav-link" data-pos-tab="invoices" data-i18n="nav.posInvoices">
+            <i class="bi bi-receipt"></i> <span>Invoices</span>
+        </a>
+        <a href="/pos#products" class="pos-nav-link" data-pos-tab="products" data-i18n="nav.posProducts">
+            <i class="bi bi-box-seam"></i> <span>Product Performance</span>
+        </a>
+    </div>
+
+    <div class="sidebar-footer">
+        <form method="POST" action="/switch-interface" class="sidebar-switch-form">
+            <input type="hidden" name="target" value="org">
+            <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToOrg">
+                <i class="bi bi-arrow-left-right"></i> <span>Switch to Organization</span>
+            </button>
+        </form>
+
+        {% if auth_user %}
+        <div class="sidebar-profile" id="sidebarProfile">
+            <button type="button" class="sidebar-profile-btn" id="profileMenuBtn" aria-expanded="false">
+                <span class="sidebar-avatar">{{ (auth_user.full_name or auth_user.email or 'U')[0] | upper }}</span>
+                <span class="sidebar-profile-copy">
+                    <strong>{{ auth_user.full_name or 'Account' }}</strong>
+                    <small>{{ auth_user.email }}</small>
+                </span>
+                <i class="bi bi-gear sidebar-gear"></i>
+            </button>
+            <div class="sidebar-profile-menu" id="profileMenu" hidden>
+                <a href="/profile"><i class="bi bi-person"></i> <span data-i18n="nav.profile">Edit Profile</span></a>
+                <a href="/organization"><i class="bi bi-building"></i> <span data-i18n="nav.orgSettings">Edit Organization Details</span></a>
+                <a href="/logout"><i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log Out</span></a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% include "partials/chrome.html" %}

@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA POS Billing Scanner</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+    /* Expand content area to handle the detailed sidebar navigation */
+    .sidebar {
+        overflow-y: auto;
+    }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import page_intro %}
+{% include "partials/sidebar_pos.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card pos-hero">
+        <div>
+            <h1 class="hero-title" data-i18n="pos.title">Point of Sale</h1>
+            <p class="hero-subtitle" data-i18n="pos.subtitle">Scan, bill, and track sales intelligence</p>
+        </div>
+        <div class="pos-quick-actions">
+            <button type="button" class="btn btn-sm btn-dark" id="posQuickNewSale" data-i18n="pos.newSale">New Sale</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="analytics" data-i18n="pos.analytics">Analytics</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="history" data-i18n="pos.history">Sales History</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="invoices" data-i18n="pos.invoices">Invoices</button>
+        </div>
+    </div>
+
+    <div class="pos-shell-tabs mb-3" role="tablist">
+        <button type="button" class="pos-shell-tab active" data-pos-tab="checkout" data-i18n="pos.checkout">Checkout</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="analytics" data-i18n="pos.analytics">Sales Analytics</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="history" data-i18n="pos.history">Sales History</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="invoices" data-i18n="pos.invoices">Invoices</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="products" data-i18n="pos.productPerf">Product Performance</button>
+    </div>
+
+    {{ page_intro("What checkout does", "Each completed bill is a GST taxable supply: it increases turnover, output GST, and stock reduction. After checkout, Dashboard, GST and Income Tax all move. Keep the camera on the product so the right HSN/GST rate is applied.") }}    
+    
+    <div id="posIntelligenceRoot">
+    <div class="pos-tab-panel" data-pos-panel="checkout">
+    <style>
+    @keyframes row-flash {
+        0% { background-color: rgba(46, 204, 113, 0.35); }
+        100% { background-color: transparent; }
+    }
+    .flash-row {
+        animation: row-flash 1.2s ease-out;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .animate-pulse {
+        animation: pulse 1.5s infinite;
+    }
+    .cv-status-bar {
+        font-size: 0.85rem;
+        color: #f8fafc;
+        background: linear-gradient(90deg, rgba(15,23,42,0.92), rgba(30,41,59,0.88));
+        border-top: 1px solid rgba(148,163,184,0.25);
+        backdrop-filter: blur(6px);
+        transition: background 0.35s ease, border-color 0.35s ease;
+    }
+    .cv-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #94a3b8;
+        flex-shrink: 0;
+        box-shadow: 0 0 0 0 rgba(148,163,184,0.5);
+    }
+    .cv-state-scanning .cv-status-dot {
+        background: #38bdf8;
+        animation: cvPulse 1.4s ease-in-out infinite;
+    }
+    .cv-state-detected .cv-status-dot { background: #22c55e; }
+    .cv-state-uncertain .cv-status-dot { background: #f59e0b; }
+    .cv-state-no_model .cv-status-dot,
+    .cv-state-offline .cv-status-dot { background: #ef4444; }
+    .cv-state-detected {
+        background: linear-gradient(90deg, rgba(6,78,59,0.92), rgba(15,23,42,0.9));
+        border-top-color: rgba(34,197,94,0.45);
+    }
+    .cv-state-uncertain {
+        background: linear-gradient(90deg, rgba(120,53,15,0.9), rgba(15,23,42,0.9));
+        border-top-color: rgba(245,158,11,0.45);
+    }
+    .cv-state-no_model, .cv-state-offline {
+        background: linear-gradient(90deg, rgba(127,29,29,0.9), rgba(15,23,42,0.9));
+        border-top-color: rgba(239,68,68,0.4);
+    }
+    @keyframes cvPulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(56,189,248,0.55); }
+        50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(56,189,248,0); }
+    }
+    .cv-detect-panel {
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        padding: 14px 16px;
+        background: var(--card-bg, #fff);
+    }
+    .cv-detect-label {
+        font-size: 0.72rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        font-weight: 700;
+        color: #64748b;
+    }
+    .cv-detect-name {
+        font-size: 1.15rem;
+        font-weight: 700;
+        line-height: 1.25;
+        margin-top: 2px;
+    }
+    .cv-detect-meta { font-size: 0.82rem; margin-top: 2px; }
+    .cv-detect-conf {
+        font-size: 1.35rem;
+        font-weight: 800;
+        color: #0f766e;
+        min-width: 3.2rem;
+        text-align: right;
+    }
+    .pos-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
+    .pos-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pos-shell-tabs {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        border-bottom: 1px solid var(--border-color, #e2e8f0);
+        padding-bottom: 10px;
+    }
+    .pos-shell-tab {
+        border: 1px solid transparent;
+        background: transparent;
+        color: #64748b;
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 8px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .pos-shell-tab:hover { background: rgba(15, 23, 42, 0.04); color: #0f172a; }
+    .pos-shell-tab.active {
+        background: #0f172a;
+        color: #fff;
+    }
+    .pos-kpi, .pos-mini-kpi {
+        background: var(--card-bg, #fff);
+        border: 1px solid var(--border-color, #e2e8f0);
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        height: 100%;
+    }
+    .pos-kpi span, .pos-mini-kpi span { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+    .pos-kpi strong, .pos-mini-kpi strong { font-size: 1.25rem; color: #0f172a; }
+    .pos-chart-wrap { height: 240px; position: relative; }
+    .pos-row-click { cursor: pointer; }
+    .pos-row-click:hover { background: rgba(15, 118, 110, 0.06); }
+    .pos-modal { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+    .pos-modal[hidden] { display: none !important; }
+    .pos-modal-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,0.45); }
+    .pos-modal-dialog { position: relative; z-index: 1; width: min(720px, 100%); max-height: 90vh; overflow: auto; }
+    </style>
+
+    <div class="dashboard-grid fade-in-up d-flex flex-column flex-lg-row gap-4">
+        <!-- Left Column: Vision Scanner & Voice controls -->
+        <div class="modern-card hover-lift flex-fill" style="flex: 1.2; min-width: 320px;">
+            <div class="d-flex justify-content-between align-items-lg-center align-items-start flex-column flex-sm-row gap-2 mb-3">
+                <h4 class="card-heading m-0" data-i18n="pos.scanner">Live Product Scanner</h4>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <div class="form-check form-switch m-0 d-flex align-items-center gap-2">
+                        <input class="form-check-input" type="checkbox" id="cameraPowerToggle" onchange="toggleCameraPower(this.checked)">
+                        <label class="form-check-label small fw-semibold" for="cameraPowerToggle" id="cameraPowerLabel" data-i18n="pos.cameraOff">Camera OFF</label>
+                    </div>
+                    <select id="scannerModeSelect" class="form-select form-select-sm" style="width: auto; background-color: var(--sidebar-bg); color: #fff; border-radius: 8px; border-color: #374151; font-weight: 500; padding: 4px 8px; font-size: 0.85rem;" onchange="changeScannerMode(this.value)">
+                        <option value="physical">Physical Camera</option>
+                        <option value="simulated">Simulated Products</option>
+                    </select>
+                    <select id="cameraIndexSelect" class="form-select form-select-sm" style="width: auto; background-color: var(--sidebar-bg); color: #fff; border-radius: 8px; border-color: #374151; font-weight: 500; padding: 4px 8px; font-size: 0.85rem; display: none;" onchange="changeCameraIndex(this.value)">
+                        <option value="0">Camera 0 (Default)</option>
+                        <option value="1">Camera 1</option>
+                        <option value="2">Camera 2</option>
+                        <option value="3">Camera 3</option>
+                    </select>
+                    <span id="cameraStatusBadge" class="badge bg-secondary">Camera OFF</span>
+                    <span id="cameraModeBadge" class="badge bg-secondary">Idle</span>
+                </div>
+            </div>
+            
+            <!-- Webcam stream display window -->
+            <div class="position-relative overflow-hidden rounded mb-3 border" style="background: #111827; border-color: #374151 !important;">
+                <img id="cameraFeed" src="/camera/video_feed" class="img-fluid rounded w-100" style="object-fit: contain; min-height: 340px;" alt="AI POS Camera" />
+                <div id="cvStatusBar" class="cv-status-bar cv-state-scanning position-absolute bottom-0 start-0 w-100 px-3 py-2 d-flex justify-content-between align-items-center gap-2">
+                    <div class="d-flex align-items-center gap-2 min-w-0">
+                        <span id="cvStatusDot" class="cv-status-dot"></span>
+                        <span id="scanningIndicator" class="text-truncate">Ready to scan</span>
+                    </div>
+                    <span id="cvStatusMeta" class="text-nowrap opacity-75" style="font-size: 0.75rem;">Camera 0</span>
+                </div>
+            </div>
+
+            <!-- Detection candidate panel (SQL-backed confirm, no auto-bill by default) -->
+            <div id="cvDetectPanel" class="cv-detect-panel mb-3">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="min-w-0">
+                        <div class="cv-detect-label">Detection</div>
+                        <div id="cvDetectName" class="cv-detect-name">—</div>
+                        <div id="cvDetectMeta" class="cv-detect-meta text-muted">Waiting for a trained product…</div>
+                    </div>
+                    <div id="cvDetectConf" class="cv-detect-conf">—</div>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-3">
+                    <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="cvAddBtn" onclick="confirmDetectedProduct()" disabled>
+                        <i class="bi bi-cart-plus"></i> Add to Cart
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="cvClearBtn" onclick="clearDetectionCandidate()" disabled>
+                        Clear
+                    </button>
+                </div>
+                <div class="form-check form-switch mt-2 mb-0">
+                    <input class="form-check-input" type="checkbox" id="cvAutoAdd" onchange="toggleAutoAdd(this.checked)">
+                    <label class="form-check-label" for="cvAutoAdd" style="font-size: 0.82rem;">Auto-add accepted detections (optional)</label>
+                </div>
+            </div>
+
+            <!-- Voice Control & Scanner Buttons -->
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" class="btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2" id="voiceBtn" onclick="toggleVoiceCommand()">
+                    <i class="bi bi-mic"></i> Voice Command
+                </button>
+                <button type="button" class="btn btn-outline-secondary py-2" id="toggleCameraBtn" onclick="toggleCameraStream()" title="Pause/Resume Camera">
+                    <i class="bi bi-camera-video-off"></i> Pause Camera
+                </button>
+            </div>
+            
+            <div id="voiceQueryDisplay" class="text-muted italic mb-3" style="font-size: 0.88rem; min-height: 22px;"></div>
+
+            <!-- Text Command Fallback Input -->
+            <div class="input-group mb-3">
+                <input type="text" id="textCommandInput" class="form-control modern-input m-0" placeholder="Or type voice command here... (e.g. 'add 2 Dairy Milk')" style="border-top-right-radius: 0; border-bottom-right-radius: 0; height: 42px; font-size: 0.88rem;">
+                <button class="btn btn-dark" type="button" id="sendTextCommandBtn" onclick="submitTextCommand()" style="border-top-right-radius: 14px; border-bottom-right-radius: 14px; height: 42px; font-size: 0.88rem;">
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </div>
+
+            <!-- Manual lookup backup barcode -->
+            <div class="accordion" id="manualSearchAccordion">
+                <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 class="accordion-header" id="headingManual">
+                        <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManual" aria-expanded="false" aria-controls="collapseManual" style="font-size: 0.88rem; font-weight: 500;">
+                            <i class="bi bi-search me-2"></i> Manual Barcode Search Backup
+                        </button>
+                    </h2>
+                    <div id="collapseManual" class="accordion-collapse collapse" aria-labelledby="headingManual" data-bs-parent="#manualSearchAccordion">
+                        <div class="accordion-body p-3">
+                            <form id="addToCartForm">
+                                <input
+                                    type="text"
+                                    id="posProduct"
+                                    list="productList"
+                                    class="form-control modern-input mb-3"
+                                    placeholder="Enter Product Name (Start typing...)"
+                                    autocomplete="off"
+                                    required
+                                >
+                                <datalist id="productList">
+                                </datalist>
+
+                                <div class="mb-3">
+                                    <label id="lblPrice" for="posPrice" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Unit Price (₹)</label>
+                                    <input type="number" step="any" id="posPrice" class="form-control modern-input mb-3" placeholder="Select product to fetch price" required readonly>
+                                    
+                                    <label id="lblQuantity" for="posQuantity" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Quantity</label>
+                                    <input type="number" id="posQuantity" class="form-control modern-input" placeholder="Enter Quantity" required>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <span style="font-weight: 500; color: #64748b;">Live Total:</span>
+                                    <span style="font-size: 1.15em; font-weight: bold; color: #2d3748;">₹<span id="liveTotal">0.00</span></span>
+                                </div>
+
+                                <button type="submit" class="btn modern-btn w-100 btn-sm">Add to Cart</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recently scanned alert banner -->
+            <div id="lastScannedAlert" class="alert alert-success mt-3 d-none align-items-center gap-3 fade-in-up" role="alert" style="border-radius: 10px;">
+                <div style="font-size: 1.8rem; line-height: 1;"><i class="bi bi-qr-code-scan text-success"></i></div>
+                <div class="flex-grow-1">
+                    <div style="font-size: 0.78rem; color: #155724; font-weight: bold; text-transform: uppercase;">Product Scanned!</div>
+                    <div style="font-weight: bold; font-size: 1.05rem;" id="lastScannedName">Product Packet</div>
+                    <div style="font-size: 0.82rem;" id="lastScannedMeta">Price: ₹0.00 | Confidence: 0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Shopping Cart -->
+        <div class="modern-card hover-lift flex-fill" style="flex: 1.3;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="card-heading m-0" data-i18n="pos.cart">Shopping Cart</h4>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearCart()"><i class="bi bi-trash"></i> <span data-i18n="pos.clearAll">Clear All</span></button>
+            </div>
+            
+            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                <table class="table" id="cartTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th data-i18n="pos.product">Product</th>
+                            <th data-i18n="pos.price">Price</th>
+                            <th data-i18n="pos.qty">Qty</th>
+                            <th data-i18n="pos.gst">GST</th>
+                            <th data-i18n="pos.total">Total</th>
+                            <th data-i18n="pos.action">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartBody">
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="text-end mt-3 mb-4">
+                <h6 style="color: #64748b; margin-bottom: 8px;"><span data-i18n="pos.subtotal">Subtotal</span>: ₹<span id="cartSubtotal">0.00</span></h6>
+                <h6 style="color: #64748b; margin-bottom: 8px;"><span data-i18n="pos.totalTax">Total Tax (GST)</span>: ₹<span id="cartTax">0.00</span></h6>
+                <h5 style="color: #2d3748; font-weight: bold; margin-top: 10px;"><span data-i18n="pos.grandTotal">Grand Total</span>: ₹<span id="cartTotal">0.00</span></h5>
+            </div>
+
+            <button id="proceedBtn" class="btn btn-dark w-100 mb-3" style="display:none;" onclick="showPayment()" data-i18n="pos.proceedPay">Proceed to Pay</button>
+
+            <!-- Payment Section -->
+            <div id="paymentSection" style="display: none; background: #f8fafc; padding: 20px; border-radius: 14px;">
+                <h5 class="mb-3" data-i18n="pos.paymentMethod">Payment Method</h5>
+                <div class="d-flex gap-2 mb-4">
+                    <button type="button" class="btn btn-outline-primary flex-fill active" id="btnCash" onclick="setPayment('cash')" data-i18n="pos.cash">Cash</button>
+                    <button type="button" class="btn btn-outline-primary flex-fill" id="btnCard" onclick="setPayment('card')" data-i18n="pos.card">Card</button>
+                </div>
+                <button type="button" class="btn btn-success w-100" style="font-weight: bold; font-size: 18px; padding: 12px;" onclick="submitTransaction()" data-i18n="pos.receivedPayment">
+                    Received Payment
+                </button>
+            </div>
+        </div>
+    </div>
+    </div><!-- /checkout panel -->
+
+    <!-- OVERVIEW -->
+    <div class="pos-tab-panel" data-pos-panel="overview" hidden>
+        <div id="posOverviewEmpty" class="modern-card text-center py-5" hidden>
+            <h4 data-i18n="common.emptySales">No sales recorded yet.</h4>
+        </div>
+        <div id="posOverviewBody">
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-lg"><div class="pos-kpi"><span data-i18n="pos.todaySales">Today's Sales</span><strong id="kpiTodaySales">₹0.00</strong></div></div>
+                <div class="col-6 col-lg"><div class="pos-kpi"><span data-i18n="pos.transactions">Transactions</span><strong id="kpiTx">0</strong></div></div>
+                <div class="col-6 col-lg"><div class="pos-kpi"><span data-i18n="pos.itemsSold">Items Sold</span><strong id="kpiItems">0</strong></div></div>
+                <div class="col-6 col-lg"><div class="pos-kpi"><span data-i18n="pos.avgTransaction">Avg. Transaction</span><strong id="kpiAvg">₹0.00</strong></div></div>
+                <div class="col-6 col-lg"><div class="pos-kpi"><span data-i18n="pos.gstCollected">GST Collected</span><strong id="kpiGst">₹0.00</strong></div></div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6"><div class="modern-card p-3"><div class="text-muted small" data-i18n="pos.bestSeller">Best-selling product today</div><div class="fw-semibold" id="kpiBest">—</div></div></div>
+                <div class="col-md-6"><div class="modern-card p-3"><div class="text-muted small" data-i18n="pos.fastestMoving">Fastest-moving product</div><div class="fw-semibold" id="kpiFast">—</div></div></div>
+            </div>
+            <div class="row g-3">
+                <div class="col-lg-6">
+                    <div class="modern-card p-3">
+                        <h5 class="card-heading" data-i18n="pos.recentTx">Recent Transactions</h5>
+                        <div class="table-responsive"><table class="table table-sm"><thead><tr><th data-i18n="pos.invoiceNo">Invoice</th><th data-i18n="pos.product">Products</th><th data-i18n="common.total">Total</th><th data-i18n="common.time">Time</th></tr></thead><tbody id="posRecentBody"></tbody></table></div>
+                    </div>
+                </div>
+                <div class="col-lg-6">
+                    <div class="modern-card p-3 mb-3">
+                        <h5 class="card-heading" data-i18n="pos.topSelling">Top Selling Products</h5>
+                        <div class="table-responsive"><table class="table table-sm"><thead><tr><th data-i18n="pos.rank">#</th><th data-i18n="pos.product">Product</th><th data-i18n="pos.unitsSold">Units</th><th data-i18n="pos.revenue">Revenue</th></tr></thead><tbody id="posTopBody"></tbody></table></div>
+                    </div>
+                    <div class="modern-card p-3 mb-3">
+                        <h5 class="card-heading" data-i18n="pos.fastestList">Fastest Moving Products</h5>
+                        <p id="posFastEmpty" class="text-muted small mb-2" hidden></p>
+                        <div class="table-responsive"><table class="table table-sm"><thead><tr><th>#</th><th data-i18n="pos.product">Product</th><th data-i18n="pos.unitsPerDay">Units/day</th><th data-i18n="pos.unitsSold">Units</th></tr></thead><tbody id="posFastBody"></tbody></table></div>
+                    </div>
+                    <div class="modern-card p-3">
+                        <h5 class="card-heading" data-i18n="common.lowStock">Low Stock</h5>
+                        <div class="table-responsive"><table class="table table-sm"><thead><tr><th data-i18n="pos.product">Product</th><th data-i18n="pos.currentStock">Stock</th><th data-i18n="common.status">Status</th></tr></thead><tbody id="posLowStockBody"></tbody></table></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="pos-tab-panel" data-pos-panel="analytics" hidden>
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <button type="button" class="btn btn-sm btn-outline-dark pos-range-btn" data-range="today" data-i18n="pos.rangeToday">Today</button>
+            <button type="button" class="btn btn-sm btn-outline-dark pos-range-btn active" data-range="7" data-i18n="pos.range7">Last 7 days</button>
+            <button type="button" class="btn btn-sm btn-outline-dark pos-range-btn" data-range="30" data-i18n="pos.range30">Last 30 days</button>
+            <button type="button" class="btn btn-sm btn-outline-dark pos-range-btn" data-range="custom" data-i18n="pos.rangeCustom">Custom</button>
+            <div id="posCustomRange" class="d-flex gap-2 align-items-center" hidden>
+                <label class="small mb-0" data-i18n="pos.from">From</label>
+                <input type="date" id="posDateFrom" class="form-control form-control-sm" style="width:auto">
+                <label class="small mb-0" data-i18n="pos.to">To</label>
+                <input type="date" id="posDateTo" class="form-control form-control-sm" style="width:auto">
+                <button type="button" class="btn btn-sm btn-dark" id="posApplyCustom" data-i18n="pos.apply">Apply</button>
+            </div>
+        </div>
+        <div id="posAnalyticsEmpty" class="modern-card text-center py-5" hidden>
+            <h4 data-i18n="common.emptySales">No sales recorded yet.</h4>
+        </div>
+        <div id="posAnalyticsBody">
+            <div class="row g-3">
+                <div class="col-lg-6"><div class="modern-card p-3"><h5 class="card-heading" data-i18n="pos.revenueTrend">Revenue Trend</h5><div class="pos-chart-wrap"><canvas id="chartRevenue"></canvas></div></div></div>
+                <div class="col-lg-6"><div class="modern-card p-3"><h5 class="card-heading" data-i18n="pos.txTrend">Transaction Trend</h5><div class="pos-chart-wrap"><canvas id="chartTx"></canvas></div></div></div>
+                <div class="col-lg-6"><div class="modern-card p-3"><h5 class="card-heading" data-i18n="pos.productSales">Product Sales</h5><div class="pos-chart-wrap"><canvas id="chartProductQty"></canvas></div></div></div>
+                <div class="col-lg-6"><div class="modern-card p-3"><h5 class="card-heading" data-i18n="pos.productRevenue">Product Revenue</h5><div class="pos-chart-wrap"><canvas id="chartProductRev"></canvas></div></div></div>
+                <div class="col-lg-6"><div class="modern-card p-3"><h5 class="card-heading" data-i18n="pos.salesDistribution">Sales Distribution</h5><div class="pos-chart-wrap"><canvas id="chartDist"></canvas></div></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HISTORY -->
+    <div class="pos-tab-panel" data-pos-panel="history" hidden>
+        <div class="modern-card p-3">
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <input type="text" id="posHistSearch" class="form-control form-control-sm" style="max-width:240px" data-i18n-placeholder="pos.searchPlaceholder" placeholder="Search…">
+                <input type="date" id="posHistFrom" class="form-control form-control-sm" style="width:auto">
+                <input type="date" id="posHistTo" class="form-control form-control-sm" style="width:auto">
+                <button type="button" class="btn btn-sm btn-dark" id="posHistApply" data-i18n="pos.apply">Apply</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr>
+                        <th data-i18n="pos.invoiceNo">Invoice</th><th data-i18n="common.date">Date</th><th data-i18n="common.time">Time</th>
+                        <th data-i18n="pos.product">Products</th><th data-i18n="pos.subtotal">Subtotal</th>
+                        <th data-i18n="pos.totalTaxLabel">Tax</th><th data-i18n="pos.grandTotal">Total</th><th data-i18n="common.actions">Actions</th>
+                    </tr></thead>
+                    <tbody id="posHistBody"></tbody>
+                </table>
+            </div>
+            <div id="posHistPager" class="d-flex align-items-center mt-2"></div>
+        </div>
+    </div>
+
+    <!-- INVOICES -->
+    <div class="pos-tab-panel" data-pos-panel="invoices" hidden>
+        <div class="modern-card p-3">
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <input type="text" id="posInvSearch" class="form-control form-control-sm" style="max-width:240px" data-i18n-placeholder="pos.searchPlaceholder" placeholder="Search…">
+                <input type="date" id="posInvFrom" class="form-control form-control-sm" style="width:auto">
+                <input type="date" id="posInvTo" class="form-control form-control-sm" style="width:auto">
+                <button type="button" class="btn btn-sm btn-dark" id="posInvApply" data-i18n="pos.apply">Apply</button>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle">
+                    <thead><tr>
+                        <th data-i18n="pos.invoiceNo">Invoice</th><th data-i18n="common.date">Date</th><th data-i18n="common.time">Time</th>
+                        <th data-i18n="pos.product">Products</th><th data-i18n="pos.subtotal">Subtotal</th>
+                        <th data-i18n="pos.totalTaxLabel">Tax</th><th data-i18n="pos.grandTotal">Total</th><th data-i18n="common.actions">Actions</th>
+                    </tr></thead>
+                    <tbody id="posInvBody"></tbody>
+                </table>
+            </div>
+            <div id="posInvPager" class="d-flex align-items-center mt-2"></div>
+        </div>
+    </div>
+
+    <!-- PRODUCT PERFORMANCE -->
+    <div class="pos-tab-panel" data-pos-panel="products" hidden>
+        <div class="modern-card p-3">
+            <label class="form-label" data-i18n="pos.selectProduct">Select a product</label>
+            <select id="posProductSelect" class="form-select mb-3" style="max-width:360px"></select>
+            <div id="posProductDetail"><p class="text-muted mb-0" data-i18n="pos.selectProduct">Select a product</p></div>
+        </div>
+    </div>
+    </div><!-- /posIntelligenceRoot -->
+
+    <div id="posInvoiceModal" class="pos-modal" hidden>
+        <div class="pos-modal-backdrop" id="posInvoiceModalBackdrop"></div>
+        <div class="pos-modal-dialog modern-card p-3">
+            <div class="d-flex justify-content-between mb-2">
+                <h5 class="m-0" data-i18n="pos.viewInvoice">View Invoice</h5>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="posInvoiceModalClose" data-i18n="common.close">Close</button>
+            </div>
+            <div id="posInvoiceModalBody"></div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+<script>
+// POS CART SYSTEM JAVASCRIPT
+let cartItems = [];
+let paymentMethod = 'cash';
+let isWeightBased = false;
+let warehouseProducts = [];
+let cameraActive = true;
+let detectionPollTimer = null;
+let currentCandidate = null; // { name, confidence }
+let eventSource = null;
+
+function playScanBeep() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(950, audioCtx.currentTime); 
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {
+        console.error("Audio beep synthesis failed: ", e);
+    }
+}
+
+async function loadWarehouseProducts() {
+    const res = await fetch('/api/products');
+    if (res.ok) {
+        warehouseProducts = await res.json();
+        const datalist = document.getElementById('productList');
+        datalist.innerHTML = '';
+        warehouseProducts.forEach(p => {
+            if (p.stock > 0) {
+                const option = document.createElement('option');
+                option.value = p.name;
+                datalist.appendChild(option);
+            }
+        });
+    }
+}
+
+function initCameraEvents() {
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    eventSource = new EventSource('/camera/events');
+    eventSource.onmessage = function(event) {
+        if (!cameraActive) return;
+        try {
+            const data = JSON.parse(event.data);
+            // SSE only fires when auto-add is enabled on the backend
+            if (data && data.name) {
+                addDetectedProductToCart(data.name, data.price, data.gst_pct, data.confidence);
+            }
+        } catch (e) {
+            console.error("Error parsing camera event: ", e);
+        }
+    };
+
+    eventSource.onerror = function() {
+        document.getElementById('cameraModeBadge').innerText = "Offline Mode";
+        document.getElementById('cameraModeBadge').className = "badge bg-danger";
+    };
+
+    document.getElementById('cameraModeBadge').innerText = "Continuous Scanning";
+    document.getElementById('cameraModeBadge').className = "badge bg-success";
+    startDetectionPolling();
+}
+
+function startDetectionPolling() {
+    if (detectionPollTimer) clearInterval(detectionPollTimer);
+    pollDetections();
+    detectionPollTimer = setInterval(pollDetections, 400);
+}
+
+async function pollDetections() {
+    if (!cameraActive) return;
+    try {
+        const res = await fetch('/camera/detections');
+        if (!res.ok) return;
+        const data = await res.json();
+        updateCvStatusUI(data);
+    } catch (e) {
+        // ignore transient poll errors
+    }
+}
+
+function updateCvStatusUI(data) {
+    const bar = document.getElementById('cvStatusBar');
+    const indicator = document.getElementById('scanningIndicator');
+    const meta = document.getElementById('cvStatusMeta');
+    const nameEl = document.getElementById('cvDetectName');
+    const metaEl = document.getElementById('cvDetectMeta');
+    const confEl = document.getElementById('cvDetectConf');
+    const addBtn = document.getElementById('cvAddBtn');
+    const clearBtn = document.getElementById('cvClearBtn');
+    if (!bar || !indicator) return;
+
+    const state = data.state || 'scanning';
+    bar.className = `cv-status-bar cv-state-${state} position-absolute bottom-0 start-0 w-100 px-3 py-2 d-flex justify-content-between align-items-center gap-2`;
+    indicator.textContent = data.message || 'Ready to scan';
+
+    if (!data.model_ready && state === 'no_model') {
+        meta.textContent = 'Train model required';
+    } else if (state === 'detected') {
+        meta.textContent = 'Accepted';
+    } else if (state === 'uncertain') {
+        meta.textContent = 'Low confidence';
+    } else {
+        meta.textContent = 'Live';
+    }
+
+    const accepted = (data.accepted && data.accepted[0]) || null;
+    if (accepted && accepted.label) {
+        currentCandidate = { name: accepted.label, confidence: accepted.confidence };
+        nameEl.textContent = accepted.label;
+        confEl.textContent = `${Math.round(accepted.confidence * 100)}%`;
+        metaEl.textContent = 'Confirm to add — price/stock come from warehouse inventory.';
+        addBtn.disabled = false;
+        clearBtn.disabled = false;
+    } else if (state === 'uncertain') {
+        currentCandidate = null;
+        const guess = data.best_guess;
+        nameEl.textContent = 'Not confidently recognized';
+        confEl.textContent = guess ? `${Math.round(guess.confidence * 100)}%` : '—';
+        metaEl.textContent = guess
+            ? `Weak signal near “${guess.label}”. Move closer or improve lighting.`
+            : 'Try another angle or lighting.';
+        addBtn.disabled = true;
+        clearBtn.disabled = true;
+    } else if (state === 'no_model') {
+        currentCandidate = null;
+        nameEl.textContent = 'Detector not trained';
+        confEl.textContent = '—';
+        metaEl.textContent = 'See docs/CV_PRODUCT_RECOGNITION.md — collect photos, then train.';
+        addBtn.disabled = true;
+        clearBtn.disabled = true;
+    } else if (!accepted) {
+        // Keep last candidate briefly unless cleared; only reset label when scanning empty
+        if (!currentCandidate) {
+            nameEl.textContent = '—';
+            confEl.textContent = '—';
+            metaEl.textContent = 'Waiting for a trained product…';
+            addBtn.disabled = true;
+            clearBtn.disabled = true;
+        }
+    }
+}
+
+function clearDetectionCandidate() {
+    currentCandidate = null;
+    document.getElementById('cvDetectName').textContent = '—';
+    document.getElementById('cvDetectMeta').textContent = 'Waiting for a trained product…';
+    document.getElementById('cvDetectConf').textContent = '—';
+    document.getElementById('cvAddBtn').disabled = true;
+    document.getElementById('cvClearBtn').disabled = true;
+}
+
+async function confirmDetectedProduct() {
+    if (!currentCandidate) return;
+    const formData = new FormData();
+    formData.append('product_name', currentCandidate.name);
+    formData.append('confidence', String(currentCandidate.confidence || 0));
+    try {
+        const res = await fetch('/camera/confirm_product', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (!data.ok) {
+            document.getElementById('cvDetectMeta').textContent = data.error || 'Product not found in warehouse.';
+            return;
+        }
+        addDetectedProductToCart(data.name, data.price, data.gst_pct, data.confidence);
+    } catch (e) {
+        console.error(e);
+        document.getElementById('cvDetectMeta').textContent = 'Could not confirm product. Try again.';
+    }
+}
+
+async function toggleAutoAdd(enabled) {
+    const formData = new FormData();
+    formData.append('enabled', enabled ? 'true' : 'false');
+    try {
+        await fetch('/camera/auto_add', { method: 'POST', body: formData });
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function addDetectedProductToCart(name, price, gstPct, confidence) {
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (!foundProduct) return;
+
+    let existingIndex = cartItems.findIndex(item => item.product.toLowerCase() === name.toLowerCase());
+    let currentCartQty = 0;
+    if (existingIndex !== -1) {
+        currentCartQty = cartItems[existingIndex].quantity;
+    }
+
+    if (currentCartQty + 1 > foundProduct.stock) {
+        return;
+    }
+
+    playScanBeep();
+
+    if (existingIndex !== -1) {
+        cartItems[existingIndex].quantity += 1;
+    } else {
+        cartItems.push({
+            product: foundProduct.name,
+            price: foundProduct.price,
+            quantity: 1,
+            isWeight: isWeightBasedProduct(foundProduct.name)
+        });
+    }
+
+    const alertBox = document.getElementById('lastScannedAlert');
+    document.getElementById('lastScannedName').innerText = foundProduct.name;
+    document.getElementById('lastScannedMeta').innerText = `Price: ₹${foundProduct.price.toFixed(2)} | Confidence: ${parseInt(confidence * 100)}%`;
+    alertBox.classList.remove('d-none');
+    alertBox.classList.add('d-flex');
+
+    renderCart();
+    highlightCartRow(foundProduct.name);
+}
+
+function isWeightBasedProduct(productName) {
+    const p = productName.toLowerCase();
+    const weightKeywords = ['tomato', 'potato', 'onion', 'carrot', 'spinach', 'broccoli', 'cabbage', 'apple', 'banana', 'orange', 'mango', 'grapes', 'strawberry', 'pineapple', 'rice', 'dal', 'sugar', 'flour', 'vegetable', 'fruit', 'salt', 'spices', 'meat', 'chicken'];
+    return weightKeywords.some(keyword => p.includes(keyword));
+}
+
+function highlightCartRow(productName) {
+    setTimeout(() => {
+        const rows = document.querySelectorAll('#cartBody tr');
+        rows.forEach(row => {
+            if (row.cells[0].innerText.toLowerCase() === productName.toLowerCase()) {
+                row.classList.add('flash-row');
+                setTimeout(() => {
+                    row.classList.remove('flash-row');
+                }, 1200);
+            }
+        });
+    }, 100);
+}
+
+function toggleCameraStream() {
+    const feed = document.getElementById('cameraFeed');
+    const btn = document.getElementById('toggleCameraBtn');
+    const badge = document.getElementById('cameraStatusBadge');
+
+    cameraActive = !cameraActive;
+
+    if (cameraActive) {
+        feed.src = "/camera/video_feed";
+        btn.innerHTML = '<i class="bi bi-camera-video-off"></i> Pause Camera';
+        btn.className = "btn btn-outline-secondary py-2";
+        badge.innerText = "Camera Connected";
+        badge.className = "badge bg-success";
+        document.getElementById('scanningIndicator').textContent = 'Ready to scan';
+        startDetectionPolling();
+    } else {
+        feed.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 640 480'><rect width='640' height='480' fill='%231f2937'/><text x='50%25' y='50%25' font-size='20' fill='%239ca3af' dominant-baseline='middle' text-anchor='middle'>CAMERA PAUSED</text></svg>";
+        btn.innerHTML = '<i class="bi bi-camera-video"></i> Resume Camera';
+        btn.className = "btn btn-success py-2";
+        badge.innerText = "Camera Paused";
+        badge.className = "badge bg-warning text-dark";
+        document.getElementById('scanningIndicator').textContent = 'Stream paused';
+        const bar = document.getElementById('cvStatusBar');
+        if (bar) {
+            bar.className = 'cv-status-bar cv-state-offline position-absolute bottom-0 start-0 w-100 px-3 py-2 d-flex justify-content-between align-items-center gap-2';
+        }
+        if (detectionPollTimer) clearInterval(detectionPollTimer);
+    }
+}
+
+function clearCart() {
+    cartItems = [];
+    renderCart();
+    document.getElementById('lastScannedAlert').classList.add('d-none');
+}
+
+let recognition = null;
+let voiceActive = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = function() {
+        voiceActive = true;
+        document.getElementById('voiceBtn').innerHTML = '<i class="bi bi-mic-fill text-danger animate-pulse"></i> Listening...';
+        document.getElementById('voiceBtn').className = "btn btn-danger flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2";
+    };
+    
+    recognition.onend = function() {
+        voiceActive = false;
+        document.getElementById('voiceBtn').innerHTML = '<i class="bi bi-mic"></i> Voice Command';
+        document.getElementById('voiceBtn').className = "btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2";
+    };
+    
+    recognition.onresult = async function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('voiceQueryDisplay').innerHTML = `<strong>Spoken Query:</strong> "${transcript}"`;
+        
+        try {
+            const formData = new FormData();
+            formData.append('text_query', transcript);
+            
+            const res = await fetch('/api/voice_assist', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.action) {
+                    handleVoiceAction(data.action);
+                } else if (data.error) {
+                    showVoiceFeedback(data.error, true);
+                }
+            }
+        } catch (e) {
+            showVoiceFeedback("Voice assist request failed: " + e.message, true);
+        }
+    };
+}
+
+function toggleVoiceCommand() {
+    if (!recognition) return;
+    if (voiceActive) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
+function handleVoiceAction(action) {
+    if (!action) return;
+    const actType = action.action;
+    
+    if (actType === 'add_to_cart') {
+        const prodName = action.product || (action.parameters && action.parameters.product);
+        const qty = action.quantity || (action.parameters && action.parameters.quantity) || 1.0;
+        
+        if (!prodName) {
+            showVoiceFeedback("Voice assistant did not specify a product name.", true);
+            return;
+        }
+        
+        const found = warehouseProducts.find(p => p.name && p.name.toLowerCase() === prodName.toLowerCase());
+        if (found) {
+            addDetectedProductToCart(found.name, found.price, classifyGst(found.name), 1.0);
+            if (qty > 1) {
+                let idx = cartItems.findIndex(item => item.product && item.product.toLowerCase() === found.name.toLowerCase());
+                if (idx !== -1) {
+                    updateQty(idx, qty);
+                }
+            }
+            showVoiceFeedback(`Added ${qty} ${found.name} to cart.`);
+        } else {
+            showVoiceFeedback(`Product '${prodName}' not found in database.`, true);
+        }
+    } 
+    else if (actType === 'remove_from_cart') {
+        const prodName = action.product || (action.parameters && action.parameters.product);
+        if (!prodName) return;
+        let idx = cartItems.findIndex(item => item.product && item.product.toLowerCase() === prodName.toLowerCase());
+        if (idx !== -1) {
+            removeItem(idx);
+            showVoiceFeedback(`Removed ${prodName} from cart.`);
+        }
+    } 
+    else if (actType === 'checkout') {
+        const pm = action.payment_method || (action.parameters && action.parameters.payment_method) || 'cash';
+        setPayment(pm);
+        showVoiceFeedback(`Proceeding to checkout via ${pm}.`);
+        setTimeout(() => { submitTransaction(); }, 1000);
+    } 
+    else if (actType === 'search') {
+        const query = action.query || (action.parameters && action.parameters.query);
+        if (!query) return;
+        showVoiceFeedback(`Searching for '${query}'...`);
+        const collapseEl = document.getElementById('collapseManual');
+        if (!collapseEl.classList.contains('show')) {
+            new bootstrap.Collapse(collapseEl, { show: true });
+        }
+        document.getElementById('posProduct').value = query;
+        document.getElementById('posProduct').dispatchEvent(new Event('input'));
+    } 
+    else if (actType === 'none' && action.reply) {
+        showVoiceFeedback(action.reply);
+    }
+}
+
+function showVoiceFeedback(msg, isError = false) {
+    const display = document.getElementById('voiceQueryDisplay');
+    const color = isError ? '#dc3545' : '#0d6efd';
+    display.innerHTML = `<span style="color: ${color}; font-weight: 500;"><i class="bi bi-robot"></i> ${msg}</span>`;
+}
+
+async function changeScannerMode(mode) {
+    const simulate = (mode === 'simulated');
+    try {
+        const formData = new FormData();
+        formData.append('simulate', simulate);
+        const res = await fetch('/camera/toggle_mode', { method: 'POST', body: formData });
+        if (res.ok) {
+            const data = await res.json();
+            const powered = document.getElementById('cameraPowerToggle')?.checked;
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, powered);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function changeCameraIndex(index) {
+    try {
+        const formData = new FormData();
+        formData.append('index', index);
+        const res = await fetch('/camera/set_index', { method: 'POST', body: formData });
+        if (res.ok) {
+            const data = await res.json();
+            const powered = document.getElementById('cameraPowerToggle')?.checked;
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, powered);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function updateScannerModeUI(isSimulated, cameraError, cameraIndex, cameraPowered) {
+    const select = document.getElementById('scannerModeSelect');
+    const badge = document.getElementById('cameraModeBadge');
+    const indexSelect = document.getElementById('cameraIndexSelect');
+    const statusBadge = document.getElementById('cameraStatusBadge');
+    const powerToggle = document.getElementById('cameraPowerToggle');
+    const powerLabel = document.getElementById('cameraPowerLabel');
+
+    if (cameraIndex !== undefined && indexSelect) {
+        indexSelect.value = cameraIndex.toString();
+    }
+    if (powerToggle) {
+        powerToggle.checked = !!cameraPowered;
+    }
+    if (powerLabel) {
+        powerLabel.textContent = cameraPowered ? 'Camera ON' : 'Camera OFF';
+        powerLabel.setAttribute('data-i18n', cameraPowered ? 'pos.cameraOn' : 'pos.cameraOff');
+    }
+
+    if (!cameraPowered) {
+        badge.innerText = 'Idle';
+        badge.className = 'badge bg-secondary';
+        statusBadge.innerText = 'Camera OFF';
+        statusBadge.className = 'badge bg-secondary';
+        if (indexSelect) indexSelect.style.display = isSimulated ? 'none' : 'inline-block';
+        if (select) select.value = isSimulated ? 'simulated' : 'physical';
+        return;
+    }
+
+    if (isSimulated) {
+        select.value = 'simulated';
+        badge.innerText = 'Demo Simulation';
+        badge.className = 'badge bg-info text-dark';
+        if (indexSelect) indexSelect.style.display = 'none';
+        statusBadge.innerText = cameraError ? "Camera Error" : "Simulation Active";
+        statusBadge.className = cameraError ? "badge bg-danger" : "badge bg-secondary";
+    } else {
+        select.value = 'physical';
+        badge.innerText = 'Scanning';
+        badge.className = 'badge bg-success';
+        if (indexSelect) indexSelect.style.display = 'inline-block';
+        statusBadge.innerText = cameraError ? "Camera Error" : "Camera ON";
+        statusBadge.className = cameraError ? "badge bg-danger" : "badge bg-success";
+    }
+}
+
+async function toggleCameraPower(enabled) {
+    const formData = new FormData();
+    formData.append('enabled', enabled ? 'true' : 'false');
+    try {
+        const res = await fetch('/camera/power', { method: 'POST', body: formData });
+        const data = await res.json();
+        updateScannerModeUI(data.is_simulated, data.camera_error, undefined, data.camera_powered);
+        if (!data.success && enabled) {
+            const t = document.getElementById('cameraPowerToggle');
+            if (t) t.checked = false;
+            alert('Could not turn the camera on. Check the device or try another index.');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+/** Analytics tabs must never auto-start the camera. */
+window.ensureCameraOffForAnalytics = async function () {
+    const toggle = document.getElementById('cameraPowerToggle');
+    if (toggle && toggle.checked) {
+        toggle.checked = false;
+        await toggleCameraPower(false);
+    }
+};
+
+async function checkCameraStatus() {
+    try {
+        const res = await fetch('/camera/status');
+        if (res.ok) {
+            const data = await res.json();
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, data.camera_powered);
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function submitTextCommand() {
+    const input = document.getElementById('textCommandInput');
+    const transcript = input.value.trim();
+    if (!transcript) return;
+    document.getElementById('voiceQueryDisplay').innerHTML = `<strong>Typed Query:</strong> "${transcript}"`;
+    input.value = '';
+    
+    try {
+        const formData = new FormData();
+        formData.append('text_query', transcript);
+        const res = await fetch('/api/voice_assist', { method: 'POST', body: formData });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.action) {
+                handleVoiceAction(data.action);
+            } else if (data.error) {
+                showVoiceFeedback(data.error, true);
+            }
+        }
+    } catch (e) {
+        showVoiceFeedback("Voice Assist failed: " + e.message, true);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadWarehouseProducts();
+    await checkCameraStatus();
+    initCameraEvents();
+    setInterval(checkCameraStatus, 3000);
+    document.getElementById('textCommandInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') submitTextCommand();
+    });
+});
+
+document.getElementById('posProduct').addEventListener('input', function(e) {
+    const product = e.target.value.toLowerCase();
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === product);
+    if (foundProduct) {
+        document.getElementById('posPrice').value = foundProduct.price;
+    }
+    
+    isWeightBased = isWeightBasedProduct(product);
+    const qtyInput = document.getElementById('posQuantity');
+    const lblQty = document.getElementById('lblQuantity');
+    const priceInput = document.getElementById('posPrice');
+    const lblPrice = document.getElementById('lblPrice');
+    
+    if (isWeightBased) {
+        lblQty.innerText = 'Weight (kg/g)';
+        qtyInput.placeholder = 'Enter Weight (e.g. 1.5)';
+        qtyInput.step = 'any';
+        lblPrice.innerText = 'Price per kg (₹)';
+    } else {
+        lblQty.innerText = 'Quantity';
+        qtyInput.placeholder = 'Enter Quantity';
+        qtyInput.removeAttribute('step');
+        lblPrice.innerText = 'Unit Price (₹)';
+    }
+    updateLiveTotal();
+});
+
+function classifyGst(product) {
+    const p = product.toLowerCase();
+    const zeroGst = ["tomato", "potato", "onion", "carrot", "spinach", "broccoli", "cabbage", "apple", "banana", "orange", "mango", "grapes", "strawberry", "pineapple", "milk", "water", "eggs", "salt", "vegetable", "fruit", "book"];
+    if (zeroGst.some(x => p.includes(x))) return 0;
+    const fiveGst = ["tea", "coffee", "sugar", "rice", "pasta", "flour", "spices", "bread", "cheese", "butter", "medicine", "food", "paneer"];
+    if (fiveGst.some(x => p.includes(x))) return 5;
+    const eighteenGst = ["tv", "laptop", "mobile", "headphones", "smartwatch", "camera", "ac", "refrigerator", "soap", "shampoo", "toothpaste", "detergent", "tissue paper", "trash bags", "towel", "bedsheet", "electronics", "maggi", "lays", "kurkure", "parle g", "good day", "biscuits"];
+    if (eighteenGst.some(x => p.includes(x))) return 18;
+    const twentyeightGst = ["car", "bike", "watch", "perfume", "jewelry", "beer", "wine", "soda", "luxury", "coca cola", "pepsi", "sprite", "juice"];
+    if (twentyeightGst.some(x => p.includes(x))) return 28;
+    return 12;
+}
+
+function updateLiveTotal() {
+    const product = document.getElementById('posProduct').value;
+    const price = parseFloat(document.getElementById('posPrice').value) || 0;
+    const qty = parseFloat(document.getElementById('posQuantity').value) || 0;
+    const subtotal = price * qty;
+    const gstRate = product ? classifyGst(product) : 0;
+    const total = subtotal + (subtotal * gstRate / 100);
+    
+    if (gstRate > 0 && total > 0) {
+        document.getElementById('liveTotal').innerHTML = `${total.toFixed(2)} <span style="font-size: 0.55em; color: #64748b; font-weight: normal;">(incl. ${gstRate}% GST)</span>`;
+    } else {
+        document.getElementById('liveTotal').innerText = total.toFixed(2);
+    }
+}
+
+document.getElementById('posPrice').addEventListener('input', updateLiveTotal);
+document.getElementById('posQuantity').addEventListener('input', updateLiveTotal);
+
+document.getElementById('addToCartForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const product = document.getElementById('posProduct').value;
+    const price = parseFloat(document.getElementById('posPrice').value);
+    const quantity = parseFloat(document.getElementById('posQuantity').value);
+
+    if (price <= 0 || quantity <= 0) {
+        alert('Price and Quantity must be greater than 0');
+        return;
+    }
+    
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === product.toLowerCase());
+    if (!foundProduct) {
+        alert('Product not found in warehouse.');
+        return;
+    }
+    
+    let currentCartQty = 0;
+    cartItems.forEach(item => {
+        if (item.product.toLowerCase() === product.toLowerCase()) {
+            currentCartQty += item.quantity;
+        }
+    });
+
+    if (currentCartQty + quantity > foundProduct.stock) {
+        alert(`Stock limit reached.`);
+        return;
+    }
+
+    cartItems.push({ product: foundProduct.name, price, quantity, isWeight: isWeightBased });
+    
+    document.getElementById('posProduct').value = '';
+    document.getElementById('posPrice').value = '';
+    document.getElementById('posQuantity').value = '';
+    document.getElementById('liveTotal').innerText = '0.00';
+    
+    isWeightBased = false;
+    document.getElementById('lblQuantity').innerText = 'Quantity';
+    document.getElementById('posQuantity').placeholder = 'Enter Quantity';
+    document.getElementById('posQuantity').removeAttribute('step');
+    document.getElementById('lblPrice').innerText = 'Unit Price (₹)';
+    
+    renderCart();
+    highlightCartRow(foundProduct.name);
+    playScanBeep();
+});
+
+function renderCart() {
+    const tbody = document.getElementById('cartBody');
+    tbody.innerHTML = '';
+    
+    let subtotal = 0;
+    let totalTax = 0;
+    let grandTotal = 0;
+    
+    cartItems.forEach((item, index) => {
+        const itemSubtotal = item.price * item.quantity;
+        const gstRate = classifyGst(item.product);
+        const itemGst = itemSubtotal * gstRate / 100;
+        const itemTotal = itemSubtotal + itemGst;
+        
+        subtotal += itemSubtotal;
+        totalTax += itemGst;
+        grandTotal += itemTotal;
+        
+        let stepAttr = item.isWeight ? 'step="any"' : '';
+        let inputSuffix = item.isWeight ? '<span class="input-group-text p-1" style="font-size: 0.8rem;">kg</span>' : '';
+        
+        tbody.innerHTML += `
+            <tr>
+                <td class="align-middle">${item.product}</td>
+                <td class="align-middle">₹${item.price.toFixed(2)}</td>
+                <td class="align-middle" style="width: 110px;">
+                    <div class="input-group input-group-sm">
+                        <input type="number" class="form-control" value="${item.quantity}" ${stepAttr} onchange="updateQty(${index}, this.value)">
+                        ${inputSuffix}
+                    </div>
+                </td>
+                <td class="align-middle" style="font-size: 0.9em; color: #64748b;">₹${itemGst.toFixed(2)} (${gstRate}%)</td>
+                <td class="align-middle" style="font-weight: 500;">₹${itemTotal.toFixed(2)}</td>
+                <td class="align-middle">
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeItem(${index})">X</button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    document.getElementById('cartSubtotal').innerText = subtotal.toFixed(2);
+    document.getElementById('cartTax').innerText = totalTax.toFixed(2);
+    document.getElementById('cartTotal').innerText = grandTotal.toFixed(2);
+    
+    if (cartItems.length > 0) {
+        document.getElementById('proceedBtn').style.display = 'block';
+    } else {
+        document.getElementById('proceedBtn').style.display = 'none';
+        document.getElementById('paymentSection').style.display = 'none';
+    }
+}
+
+function updateQty(index, newQty) {
+    let val = parseFloat(newQty);
+    if (isNaN(val) || val <= 0) val = 1;
+    if (!cartItems[index].isWeight) val = parseInt(val);
+    
+    const itemToUpdate = cartItems[index];
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === itemToUpdate.product.toLowerCase());
+    
+    if (foundProduct) {
+        let otherCartQty = 0;
+        cartItems.forEach((item, i) => {
+            if (i !== index && item.product.toLowerCase() === itemToUpdate.product.toLowerCase()) {
+                otherCartQty += item.quantity;
+            }
+        });
+
+        if (otherCartQty + val > foundProduct.stock) {
+            alert(`Stock limit reached.`);
+            val = foundProduct.stock - otherCartQty;
+            if (val <= 0) val = 1; 
+        }
+    }
+    
+    cartItems[index].quantity = val;
+    renderCart();
+}
+
+function removeItem(index) {
+    cartItems.splice(index, 1);
+    renderCart();
+}
+
+function showPayment() {
+    document.getElementById('paymentSection').style.display = 'block';
+    document.getElementById('proceedBtn').style.display = 'none';
+}
+
+function setPayment(method) {
+    paymentMethod = method;
+    if(method === 'cash') {
+        document.getElementById('btnCash').classList.add('active');
+        document.getElementById('btnCard').classList.remove('active');
+    } else {
+        document.getElementById('btnCard').classList.add('active');
+        document.getElementById('btnCash').classList.remove('active');
+    }
+}
+
+async function submitTransaction() {
+    if (cartItems.length === 0) return;
+
+    const payload = cartItems.map(item => ({
+        product: item.product,
+        price: Number(item.price),
+        quantity: Number(item.quantity)
+    }));
+
+    const response = await fetch('/add_multiple', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/pdf, application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+        if (response.ok) {
+            const contentType = response.headers.get('Content-Type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.ok) {
+                    alert(data.message || 'Payment received and sale saved.');
+                } else {
+                    alert(data.error || 'Could not complete this payment. Please try again.');
+                    return;
+                }
+            } else {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'invoice.pdf';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch && filenameMatch.length >= 2) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                alert('Payment received. Invoice downloaded.');
+            }
+            cartItems = [];
+            renderCart();
+            document.getElementById('paymentSection').style.display = 'none';
+            document.getElementById('lastScannedAlert').classList.add('d-none');
+            if (typeof loadWarehouseProducts === 'function') loadWarehouseProducts();
+        } else {
+            let msg = 'Unable to complete the sale. Please try again.';
+            try {
+                const data = await response.json();
+                if (data && (data.error || data.detail)) {
+                    msg = data.error || (typeof data.detail === 'string' ? data.detail : msg);
+                }
+            } catch (e) {}
+            alert(msg);
+        }
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/pos_intelligence.js"></script>
+
+</body>
+</html>

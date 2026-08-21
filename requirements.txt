@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+fpdf
+jinja2
+psycopg2-binary
+python-multipart
+google-genai
+python-dotenv
+opencv-python
+ultralytics

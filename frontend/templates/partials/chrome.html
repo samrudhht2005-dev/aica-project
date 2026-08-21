@@ -1,0 +1,47 @@
+{# Shared floating chrome: theme, language, FAB, assistant panel #}
+<button type="button" class="aica-theme-toggle" id="aicaThemeToggle" data-i18n-title="assistant.theme" data-i18n-aria="assistant.theme" title="Toggle theme" aria-label="Toggle theme">
+    <i class="bi bi-moon-fill" id="aicaThemeIcon"></i>
+</button>
+
+<div class="aica-lang-switch" id="aicaLangSwitch" data-i18n-title="assistant.language" title="Language">
+    <select id="aicaLangSelect" aria-label="Language" class="aica-lang-select" data-i18n-aria="assistant.language">
+        <option value="en" {% if preferred_language == 'en' %}selected{% endif %}>English</option>
+        <option value="kn" {% if preferred_language == 'kn' %}selected{% endif %}>ಕನ್ನಡ</option>
+        <option value="hi" {% if preferred_language == 'hi' %}selected{% endif %}>हिन्दी</option>
+    </select>
+</div>
+
+<button type="button" class="aica-fab" id="aicaFab" data-i18n-title="assistant.open" data-i18n-aria="assistant.open" title="AICA assistant" aria-label="Open AICA assistant">
+    <i class="bi bi-stars"></i>
+</button>
+
+<div class="aica-chat" id="aicaChat" hidden>
+    <div class="aica-chat-head">
+        <div>
+            <div class="aica-chat-title" data-i18n="assistant.title">AICA</div>
+            <div class="aica-chat-sub" id="aicaChatContext" data-i18n="assistant.context">Assistant</div>
+        </div>
+        <button type="button" class="aica-chat-close" id="aicaChatClose" data-i18n-aria="assistant.close" aria-label="Close assistant"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="aica-chat-body" id="aicaChatBody"></div>
+    <div class="aica-chat-nav" id="aicaChatNav" hidden></div>
+    <div class="aica-voice-status" id="aicaVoiceStatus" hidden></div>
+    <form class="aica-chat-form" id="aicaChatForm">
+        <button type="button" class="aica-mic-btn" id="aicaMicBtn" data-i18n-aria="assistant.micOff" data-i18n-title="assistant.micOff" aria-label="Voice" title="Voice">
+            <i class="bi bi-mic" id="aicaMicIcon"></i>
+        </button>
+        <input type="text" id="aicaChatInput" placeholder="Ask about this screen…" autocomplete="off" data-i18n-placeholder="assistant.placeholder">
+        <button type="submit" aria-label="Send"><i class="bi bi-arrow-up"></i></button>
+    </form>
+</div>
+
+<script>
+window.AICA_PAGE = {{ (active_page or 'dashboard') | tojson }};
+window.AICA_PATH = {{ (request.url.path if request else '/') | tojson }};
+window.AICA_UI_MODE = {{ (ui_mode or 'org') | tojson }};
+window.AICA_LANG = {{ (preferred_language or 'en') | tojson }};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="/static/i18n.js?v=4"></script>
+<script src="/static/assistant.js?v=2"></script>
+<script src="/static/sidebar.js?v=3"></script>

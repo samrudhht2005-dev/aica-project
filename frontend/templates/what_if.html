@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - What-If Tax Simulator</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .simulator-box {
+            background: var(--surface);
+            border-radius: 20px;
+            padding: 30px;
+            border: 1px solid var(--border-color);
+        }
+        .result-pill {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.whatIfTitle">What-If Financial Scenario Simulator</h1>
+            <p class="hero-subtitle">Models sit on top of current books — sales ₹{{ "{:,.2f}".format(sales_total) }}, costs ₹{{ "{:,.2f}".format(expenses_total) }}, profit ₹{{ "{:,.2f}".format(profit_total) }}</p>
+        </div>
+    </div>
+
+    {{ page_intro("What a what-if run is", "This does not post a voucher. It answers: if I hire, buy a machine, grow sales, or open a branch, how do salary, depreciation, GST and tax roughly move from today’s ledger? Use it before you spend.") }}
+
+    <div class="row g-4">
+        <!-- Input parameters -->
+        <div class="col-md-5">
+            <div class="simulator-box">
+                <h5 class="font-weight-bold mb-3"><i class="bi bi-sliders"></i> Simulation Parameters</h5>
+                
+                <form id="simForm" onsubmit="runSimulation(event)">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Scenario Type</label>
+                        <select name="scenario_type" id="simType" class="form-select modern-input" onchange="toggleInputs(this.value)">
+                            <option value="Hiring Employees">Hire Additional Employees</option>
+                            <option value="Asset Purchase">Purchase Plant/Machinery Assets</option>
+                            <option value="Revenue Boost">Sales Turnover Increase</option>
+                            <option value="Branch Expansion">Open New Regional Branch</option>
+                        </select>
+                    </div>
+
+                    <!-- Input 1 -->
+                    <div class="mb-3" id="inputBox1">
+                        <label class="form-label small text-muted" id="lblInput1">Number of Employees to Hire</label>
+                        <input type="number" name="param1" id="valInput1" class="form-control modern-input" placeholder="e.g. 10" value="10">
+                    </div>
+
+                    <!-- Input 2 -->
+                    <div class="mb-3" id="inputBox2">
+                        <label class="form-label small text-muted" id="lblInput2">Expected Average Salary (Rs./Month)</label>
+                        <input type="number" name="param2" id="valInput2" class="form-control modern-input" placeholder="e.g. 22000" value="22000">
+                    </div>
+
+                    <button type="submit" class="btn modern-btn w-100 btn-sm"><i class="bi bi-play-fill"></i> Run Simulation</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Simulation Results -->
+        <div class="col-md-7">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-file-bar-graph"></i> Projected Impact Analysis</h4>
+                
+                <div id="simLoading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Calculating...</span>
+                    </div>
+                    <p class="mt-2 text-muted">AICA is compiling depreciation WDV and salary tax impacts...</p>
+                </div>
+
+                <div id="simEmpty" class="text-center py-5 text-muted">
+                    <i class="bi bi-lightning" style="font-size: 3rem;"></i>
+                    <p class="mt-2">Select a scenario and click 'Run Simulation' to inspect financial outputs.</p>
+                </div>
+
+                <!-- Simulation Output -->
+                <div id="simOutput" class="d-none">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">Turnover Change</span>
+                                <h5 class="m-0 text-success font-weight-bold" id="resRev">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">Salary Cost Change</span>
+                                <h5 class="m-0 text-danger font-weight-bold" id="resSalary">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">Depreciation Claim</span>
+                                <h5 class="m-0 text-success font-weight-bold" id="resDep">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">GST Tax Impact</span>
+                                <h5 class="m-0 text-primary font-weight-bold" id="resGst">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">Net Profit Impact</span>
+                                <h5 class="m-0 font-weight-bold" id="resProfit">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="result-pill">
+                                <span class="text-muted small">Income Tax Impact</span>
+                                <h5 class="m-0 font-weight-bold" id="resTax">₹0.00</h5>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="result-pill bg-success-light border-success">
+                                <span class="text-success small">Eligible Tax Incentives Triggered</span>
+                                <h5 class="m-0 text-success font-weight-bold mt-1" id="resIncentives">None</h5>
+                            </div>
+                        </div>
+                        <div class="col-12 mt-3">
+                            <h6 class="font-weight-bold"><i class="bi bi-chat-left-text-fill text-primary"></i> AICA Financial Takeaway</h6>
+                            <p class="small text-muted italic" id="resNarrative"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+<script>
+function toggleInputs(value) {
+    const lbl1 = document.getElementById('lblInput1');
+    const val1 = document.getElementById('valInput1');
+    const lbl2 = document.getElementById('lblInput2');
+    const val2 = document.getElementById('valInput2');
+    
+    if (value === "Hiring Employees") {
+        lbl1.innerText = "Number of Employees to Hire";
+        val1.value = "10";
+        lbl2.innerText = "Expected Average Salary (Rs./Month)";
+        val2.value = "22000";
+        document.getElementById('inputBox2').style.display = "block";
+    } else if (value === "Asset Purchase") {
+        lbl1.innerText = "Capital Asset Value (Rs.)";
+        val1.value = "2000000";
+        lbl2.innerText = "Asset Category (Computers / Machinery)";
+        val2.value = "Machinery";
+        document.getElementById('inputBox2').style.display = "block";
+    } else if (value === "Revenue Boost") {
+        lbl1.innerText = "Expected Sales growth (%)";
+        val1.value = "20";
+        document.getElementById('inputBox2').style.display = "none";
+    } else if (value === "Branch Expansion") {
+        lbl1.innerText = "Branch Office Monthly Rent (Rs)";
+        val1.value = "60000";
+        lbl2.innerText = "Branch Operating Staff Count";
+        val2.value = "5";
+        document.getElementById('inputBox2').style.display = "block";
+    }
+}
+
+async function runSimulation(event) {
+    event.preventDefault();
+    
+    document.getElementById('simEmpty').classList.add('d-none');
+    document.getElementById('simOutput').classList.add('d-none');
+    document.getElementById('simLoading').classList.remove('d-none');
+    
+    const formData = new FormData(document.getElementById('simForm'));
+    
+    try {
+        const response = await fetch('/api/simulate', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.result) {
+                // Populate results
+                document.getElementById('resRev').innerText = "₹" + parseFloat(data.result.revenue_change).toLocaleString('en-IN');
+                document.getElementById('resSalary').innerText = "₹" + parseFloat(data.result.salary_cost_change).toLocaleString('en-IN');
+                document.getElementById('resDep').innerText = "₹" + parseFloat(data.result.depreciation_deduction).toLocaleString('en-IN');
+                document.getElementById('resGst').innerText = "₹" + parseFloat(data.result.gst_impact).toLocaleString('en-IN');
+                
+                const profitVal = parseFloat(data.result.profit_impact);
+                const profitEl = document.getElementById('resProfit');
+                profitEl.innerText = "₹" + profitVal.toLocaleString('en-IN');
+                profitEl.className = profitVal >= 0 ? "m-0 text-success font-weight-bold" : "m-0 text-danger font-weight-bold";
+                
+                document.getElementById('resTax').innerText = "₹" + parseFloat(data.result.estimated_tax_impact).toLocaleString('en-IN');
+                document.getElementById('resIncentives').innerText = data.result.eligible_incentives;
+                document.getElementById('resNarrative').innerText = data.result.ai_narrative;
+                
+                document.getElementById('simOutput').classList.remove('d-none');
+            }
+        }
+    } catch(e) {
+        console.error(e);
+        alert("Simulation run error.");
+    } finally {
+        document.getElementById('simLoading').classList.add('d-none');
+    }
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - Employee & Payroll Management</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .payroll-card {
+            border-radius: var(--radius);
+            padding: 24px;
+            color: white;
+            background: linear-gradient(135deg, #0f766e 0%, #115e59 100%);
+            box-shadow: var(--shadow-md);
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import ca_tip, field_explain, page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.payrollTitle">Corporate Payroll & Incentives</h1>
+            <p class="hero-subtitle">Live CTC, 80JJAA eligibility for FY {{ financial_year }}, and payroll cost that flows into profit</p>
+        </div>
+    </div>
+
+    {{ page_intro("What payroll does here", "Each employee’s monthly gross plus EPF/benefits is a business cost. Section 80JJAA gives an extra 30% deduction for 3 years on new staff earning ≤ ₹25,000/month who joined in this financial year (and typically stay 240 days with PF). Adding or removing a person immediately changes Income Tax and the dashboard.") }}
+
+    <div class="row g-3 mb-3">
+        <div class="col-md-6"><div class="p-3 border rounded-4"><span class="text-muted small">This month payroll cost</span><h4>₹{{ "{:,.2f}".format(monthly_payroll) }}</h4></div></div>
+        <div class="col-md-6"><div class="p-3 border rounded-4"><span class="text-muted small">Annual projected CTC</span><h4>₹{{ "{:,.2f}".format(annual_payroll) }}</h4></div></div>
+    </div>
+
+    <!-- Section 80JJAA Alert Panel -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-8">
+            <div class="payroll-card">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h4 class="font-weight-bold m-0"><i class="bi bi-lightning-charge"></i> Section 80JJAA Tax Planning Opportunity</h4>
+                        <p class="small mt-2 opacity-90">
+                            Indian Income Tax allows a <strong>30% deduction</strong> of the salary cost of new additional employees for <strong>3 consecutive years</strong> if:
+                            <br>• Gross salary is <strong>&lt;= Rs. 25,000/month</strong>.
+                            <br>• Employee is employed for <strong>&gt;= 240 days</strong> (or 150 days in apparel/leather).
+                            <br>• Employee participates in the <strong>EPF scheme</strong>.
+                        </p>
+                    </div>
+                </div>
+                <hr style="border-color: rgba(255,255,255,0.2);">
+                <div class="row text-center">
+                    <div class="col-6 border-end">
+                        <span class="small opacity-75">Eligible New Hires Found</span>
+                        <h4 class="font-weight-bold mt-1 text-white">{{ eligible_count }} Employees</h4>
+                    </div>
+                    <div class="col-6">
+                        <span class="small opacity-75">Est. Annual Tax Savings Impact</span>
+                        <h4 class="font-weight-bold mt-1 text-white">₹{{ "{:,.2f}".format(potential_deduction) }}</h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Employee Form -->
+        <div class="col-md-4">
+            <div class="modern-card p-3">
+                <h5 class="font-weight-bold mb-3"><i class="bi bi-person-plus-fill text-success"></i> Add Employee</h5>
+                {% if error %}
+                <div class="alert alert-warning py-2 small">{{ error }}</div>
+                {% endif %}
+                <form action="/api/employees/create" method="POST">
+                    {{ field_explain("Employee ID", "Employee ID", "Internal code. Keep it unique. Needed for PF and payroll registers.") }}
+                    <input type="text" name="employee_id" class="form-control modern-input" placeholder="Employee ID (e.g. EMP010)" required>
+                    {{ field_explain("Full name", "Name", "As on Aadhaar / appointment letter.") }}
+                    <input type="text" name="name" class="form-control modern-input" placeholder="Full Name" required>
+                    
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <input type="text" name="department" class="form-control modern-input" placeholder="Department">
+                        </div>
+                        <div class="col-6">
+                            <input type="text" name="designation" class="form-control modern-input" placeholder="Designation">
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <input type="number" step="any" name="salary" class="form-control modern-input" placeholder="Monthly Gross (₹)" required title="Gross emoluments. 80JJAA only if ≤ 25000.">
+                        </div>
+                        <div class="col-6">
+                            <input type="number" step="any" name="basic_salary" class="form-control modern-input" placeholder="Basic Salary (₹)" required title="Basic is usually the PF wage base.">
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <input type="number" step="any" name="allowances" class="form-control modern-input" placeholder="Allowances (₹)">
+                        </div>
+                        <div class="col-6">
+                            <input type="number" step="any" name="employer_contribution" class="form-control modern-input" placeholder="EPF Employer Cont. (₹)">
+                        </div>
+                    </div>
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <input type="number" step="any" name="benefits" class="form-control modern-input" placeholder="Other benefits (e.g. Insurance)">
+                        </div>
+                        <div class="col-6">
+                            <input type="date" name="joining_date" class="form-control modern-input" required>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn modern-btn w-100 btn-sm mt-1">Register Employee</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Employee Directory & CTC calculations -->
+    <div class="modern-card">
+        <h4 class="card-heading"><i class="bi bi-journal-text text-primary"></i> Employee payroll directory</h4>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Employee ID / Name</th>
+                        <th>Department / Role</th>
+                        <th>Joining Date</th>
+                        <th>Monthly Gross</th>
+                        <th>EPF / Welfare</th>
+                        <th>Annual Projected CTC</th>
+                        <th>Sec 80JJAA Opportunity</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                        <tr>
+                            <td>
+                                <strong>{{ emp.name }}</strong>
+                                <div class="text-muted small">ID: {{ emp.employee_id }}</div>
+                            </td>
+                            <td>
+                                <div>{{ emp.department }}</div>
+                                <div class="text-muted small">{{ emp.designation }}</div>
+                            </td>
+                            <td>{{ emp.joining_date.strftime('%Y-%m-%d') if emp.joining_date else 'N/A' }}</td>
+                            <td>₹{{ "{:,.2f}".format(emp.salary) }}</td>
+                            <td>₹{{ "{:,.2f}".format(emp.employer_contribution + emp.benefits) }}</td>
+                            <td><strong>₹{{ "{:,.2f}".format((emp.salary + emp.employer_contribution + emp.benefits) * 12) }}</strong></td>
+                            <td>
+                                {% if eligibility.get(emp.id) %}
+                                    <span class="badge bg-success" title="Joined in current FY with monthly emoluments ≤ ₹25,000"><i class="bi bi-check-circle"></i> Eligible (FY {{ financial_year }})</span>
+                                {% else %}
+                                    <span class="text-muted small">Not 80JJAA this FY</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form action="/api/employees/delete/{{ emp.id }}" method="POST" onsubmit="return confirm('Remove employee from register?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center text-muted">No employees registered yet. Use the registration form above.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+
+</body>
+</html>

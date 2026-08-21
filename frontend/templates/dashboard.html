@@ -1,0 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA Dashboard</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+</head>
+
+<body>
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+
+        <div>
+            <h1 class="hero-title" data-i18n="pages.dashboardTitle">AI Chartered Accountant</h1>
+
+            <p class="hero-subtitle" data-i18n="pages.dashboardSub">
+                Smart GST Billing & AI Accounting Platform
+            </p>
+        </div>
+
+    </div>    
+    
+    <style>
+    @keyframes row-flash {
+        0% { background-color: rgba(46, 204, 113, 0.35); }
+        100% { background-color: transparent; }
+    }
+    .flash-row {
+        animation: row-flash 1.2s ease-out;
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    .animate-pulse {
+        animation: pulse 1.5s infinite;
+    }
+    </style>
+
+    <div class="dashboard-grid fade-in-up d-flex flex-column flex-lg-row gap-4">
+        <!-- Left Column: Vision Scanner & Voice controls -->
+        <div class="modern-card hover-lift flex-fill" style="flex: 1.2; min-width: 320px;">
+            <div class="d-flex justify-content-between align-items-lg-center align-items-start flex-column flex-sm-row gap-2 mb-3">
+                <h4 class="card-heading m-0">Live Product Scanner</h4>
+                <div class="d-flex gap-2 align-items-center flex-wrap">
+                    <select id="scannerModeSelect" class="form-select form-select-sm" style="width: auto; background-color: var(--sidebar-bg); color: #fff; border-radius: 8px; border-color: #374151; font-weight: 500; padding: 4px 8px; font-size: 0.85rem;" onchange="changeScannerMode(this.value)">
+                        <option value="physical">Physical Camera</option>
+                        <option value="simulated">Simulated Products</option>
+                    </select>
+                    <select id="cameraIndexSelect" class="form-select form-select-sm" style="width: auto; background-color: var(--sidebar-bg); color: #fff; border-radius: 8px; border-color: #374151; font-weight: 500; padding: 4px 8px; font-size: 0.85rem; display: none;" onchange="changeCameraIndex(this.value)">
+                        <option value="0">Camera 0 (Default)</option>
+                        <option value="1">Camera 1</option>
+                        <option value="2">Camera 2</option>
+                        <option value="3">Camera 3</option>
+                    </select>
+                    <span id="cameraStatusBadge" class="badge bg-success">Camera Connected</span>
+                    <span id="cameraModeBadge" class="badge bg-primary">Loading...</span>
+                </div>
+            </div>
+            
+            <!-- Webcam stream display window -->
+            <div class="position-relative overflow-hidden rounded mb-3 border" style="background: #111827; border-color: #374151 !important;">
+                <img id="cameraFeed" src="/camera/video_feed" class="img-fluid rounded w-100" style="object-fit: contain; min-height: 340px;" alt="AI POS Camera" />
+                <div class="position-absolute bottom-0 start-0 w-100 p-2 bg-dark bg-opacity-75 text-white d-flex justify-content-between align-items-center" style="font-size: 0.82rem;">
+                    <span>Webcam Device: Index 0</span>
+                    <span id="scanningIndicator" class="animate-pulse text-success"><i class="bi bi-circle-fill"></i> CONTINUOUS SCANNING</span>
+                </div>
+            </div>
+
+            <!-- Voice Control & Scanner Buttons -->
+            <div class="d-flex gap-2 mb-3">
+                <button type="button" class="btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2" id="voiceBtn" onclick="toggleVoiceCommand()">
+                    <i class="bi bi-mic"></i> Voice Command
+                </button>
+                <button type="button" class="btn btn-outline-secondary py-2" id="toggleCameraBtn" onclick="toggleCameraStream()" title="Pause/Resume Camera">
+                    <i class="bi bi-camera-video-off"></i> Pause Camera
+                </button>
+            </div>
+            
+            <div id="voiceQueryDisplay" class="text-muted italic mb-3" style="font-size: 0.88rem; min-height: 22px;"></div>
+
+            <!-- Text Command Fallback Input -->
+            <div class="input-group mb-3">
+                <input type="text" id="textCommandInput" class="form-control modern-input m-0" placeholder="Or type voice command here... (e.g. 'add 2 Lays')" style="border-top-right-radius: 0; border-bottom-right-radius: 0; height: 42px; font-size: 0.88rem;">
+                <button class="btn btn-dark" type="button" id="sendTextCommandBtn" onclick="submitTextCommand()" style="border-top-right-radius: 14px; border-bottom-right-radius: 14px; height: 42px; font-size: 0.88rem;">
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </div>
+
+            <!-- Manual lookup backup barcode -->
+            <div class="accordion" id="manualSearchAccordion">
+                <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 class="accordion-header" id="headingManual">
+                        <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManual" aria-expanded="false" aria-controls="collapseManual" style="font-size: 0.88rem; font-weight: 500;">
+                            <i class="bi bi-search me-2"></i> Manual Barcode Search Backup
+                        </button>
+                    </h2>
+                    <div id="collapseManual" class="accordion-collapse collapse" aria-labelledby="headingManual" data-bs-parent="#manualSearchAccordion">
+                        <div class="accordion-body p-3">
+                            <form id="addToCartForm">
+                                <input
+                                    type="text"
+                                    id="posProduct"
+                                    list="productList"
+                                    class="form-control modern-input mb-3"
+                                    placeholder="Enter Product Name (Start typing...)"
+                                    autocomplete="off"
+                                    required
+                                >
+                                <datalist id="productList">
+                                </datalist>
+
+                                <div class="mb-3">
+                                    <label id="lblPrice" for="posPrice" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Unit Price (₹)</label>
+                                    <input type="number" step="any" id="posPrice" class="form-control modern-input mb-3" placeholder="Select product to fetch price" required readonly>
+                                    
+                                    <label id="lblQuantity" for="posQuantity" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Quantity</label>
+                                    <input type="number" id="posQuantity" class="form-control modern-input" placeholder="Enter Quantity" required>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <span style="font-weight: 500; color: #64748b;">Live Total:</span>
+                                    <span style="font-size: 1.15em; font-weight: bold; color: #2d3748;">₹<span id="liveTotal">0.00</span></span>
+                                </div>
+
+                                <button type="submit" class="btn modern-btn w-100 btn-sm">Add to Cart</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recently scanned alert banner -->
+            <div id="lastScannedAlert" class="alert alert-success mt-3 d-none align-items-center gap-3 fade-in-up" role="alert" style="border-radius: 10px;">
+                <div style="font-size: 1.8rem; line-height: 1;"><i class="bi bi-qr-code-scan text-success"></i></div>
+                <div class="flex-grow-1">
+                    <div style="font-size: 0.78rem; color: #155724; font-weight: bold; text-transform: uppercase;">Product Scanned!</div>
+                    <div style="font-weight: bold; font-size: 1.05rem;" id="lastScannedName">Product Packet</div>
+                    <div style="font-size: 0.82rem;" id="lastScannedMeta">Price: ₹0.00 | Confidence: 0%</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Shopping Cart -->
+        <div class="modern-card hover-lift flex-fill" style="flex: 1.3;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="card-heading m-0">Shopping Cart</h4>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearCart()"><i class="bi bi-trash"></i> Clear All</button>
+            </div>
+            
+            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+                <table class="table" id="cartTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Product</th>
+                            <th>Price</th>
+                            <th>Qty</th>
+                            <th>GST</th>
+                            <th>Total</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cartBody">
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="text-end mt-3 mb-4">
+                <h6 style="color: #64748b; margin-bottom: 8px;">Subtotal: ₹<span id="cartSubtotal">0.00</span></h6>
+                <h6 style="color: #64748b; margin-bottom: 8px;">Total Tax (GST): ₹<span id="cartTax">0.00</span></h6>
+                <h5 style="color: #2d3748; font-weight: bold; margin-top: 10px;">Grand Total: ₹<span id="cartTotal">0.00</span></h5>
+            </div>
+
+            <button id="proceedBtn" class="btn btn-dark w-100 mb-3" style="display:none;" onclick="showPayment()">Proceed to Pay</button>
+
+            <!-- Payment Section -->
+            <div id="paymentSection" style="display: none; background: #f8fafc; padding: 20px; border-radius: 14px;">
+                <h5 class="mb-3">Payment Method</h5>
+                <div class="d-flex gap-2 mb-4">
+                    <button type="button" class="btn btn-outline-primary flex-fill active" id="btnCash" onclick="setPayment('cash')">Cash</button>
+                    <button type="button" class="btn btn-outline-primary flex-fill" id="btnCard" onclick="setPayment('card')">Card</button>
+                </div>
+                <button type="button" class="btn btn-success w-100" style="font-weight: bold; font-size: 18px; padding: 12px;" onclick="submitTransaction()">
+                    Received Payment
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// POS CART SYSTEM JAVASCRIPT
+let cartItems = [];
+let paymentMethod = 'cash';
+let isWeightBased = false;
+let warehouseProducts = [];
+let cameraActive = true;
+let eventSource = null;
+
+// Audio context beep generator to sound when a product scans
+function playScanBeep() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(950, audioCtx.currentTime); // High pitch scan beep
+        gainNode.gain.setValueAtTime(0.08, audioCtx.currentTime);
+        oscillator.start();
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+        oscillator.stop(audioCtx.currentTime + 0.15);
+    } catch (e) {
+        console.error("Audio beep synthesis failed: ", e);
+    }
+}
+
+// Load warehouse products
+async function loadWarehouseProducts() {
+    const res = await fetch('/api/products');
+    if (res.ok) {
+        warehouseProducts = await res.json();
+        const datalist = document.getElementById('productList');
+        datalist.innerHTML = '';
+        warehouseProducts.forEach(p => {
+            if (p.stock > 0) {
+                const option = document.createElement('option');
+                option.value = p.name;
+                datalist.appendChild(option);
+            }
+        });
+    }
+}
+
+// Initialize SSE Camera Scan Listener
+function initCameraEvents() {
+    if (eventSource) {
+        eventSource.close();
+    }
+    
+    eventSource = new EventSource('/camera/events');
+    
+    eventSource.onmessage = function(event) {
+        if (!cameraActive) return;
+        
+        try {
+            const data = JSON.parse(event.data);
+            if (data && data.name) {
+                // Auto add detected product to cart
+                addDetectedProductToCart(data.name, data.price, data.gst_pct, data.confidence);
+            }
+        } catch (e) {
+            console.error("Error parsing camera event data: ", e);
+        }
+    };
+    
+    eventSource.onerror = function() {
+        console.warn("EventSource disconnected. Attempting reconnect...");
+        document.getElementById('cameraModeBadge').innerText = "Offline Mode";
+        document.getElementById('cameraModeBadge').className = "badge bg-danger";
+    };
+    
+    document.getElementById('cameraModeBadge').innerText = "Continuous Scanning";
+    document.getElementById('cameraModeBadge').className = "badge bg-success";
+}
+
+// Auto-add scanned product to cart
+function addDetectedProductToCart(name, price, gstPct, confidence) {
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
+    if (!foundProduct) return;
+    
+    // Check quantity currently inside cart
+    let existingIndex = cartItems.findIndex(item => item.product.toLowerCase() === name.toLowerCase());
+    let currentCartQty = 0;
+    if (existingIndex !== -1) {
+        currentCartQty = cartItems[existingIndex].quantity;
+    }
+    
+    // Validate stock
+    if (currentCartQty + 1 > foundProduct.stock) {
+        console.warn(`Scanned item '${name}' out of stock in warehouse!`);
+        return;
+    }
+    
+    // Play POS scan sound
+    playScanBeep();
+    
+    // Update quantity if already exists else create new row
+    if (existingIndex !== -1) {
+        cartItems[existingIndex].quantity += 1;
+    } else {
+        cartItems.push({
+            product: foundProduct.name,
+            price: foundProduct.price,
+            quantity: 1,
+            isWeight: isWeightBasedProduct(foundProduct.name)
+        });
+    }
+    
+    // Display last scanned details banner
+    const alertBox = document.getElementById('lastScannedAlert');
+    document.getElementById('lastScannedName').innerText = foundProduct.name;
+    document.getElementById('lastScannedMeta').innerText = `Price: ₹${foundProduct.price.toFixed(2)} | Confidence: ${parseInt(confidence * 100)}%`;
+    alertBox.classList.remove('d-none');
+    
+    // Recalculate and update cart totals
+    renderCart();
+    
+    // Animate newly added or modified row
+    highlightCartRow(foundProduct.name);
+}
+
+// Check if weight-based
+function isWeightBasedProduct(productName) {
+    const p = productName.toLowerCase();
+    const weightKeywords = ['tomato', 'potato', 'onion', 'carrot', 'spinach', 'broccoli', 'cabbage', 'apple', 'banana', 'orange', 'mango', 'grapes', 'strawberry', 'pineapple', 'rice', 'dal', 'sugar', 'flour', 'vegetable', 'fruit', 'salt', 'spices', 'meat', 'chicken'];
+    return weightKeywords.some(keyword => p.includes(keyword));
+}
+
+// Highlight modified row in green
+function highlightCartRow(productName) {
+    setTimeout(() => {
+        const rows = document.querySelectorAll('#cartBody tr');
+        rows.forEach(row => {
+            if (row.cells[0].innerText.toLowerCase() === productName.toLowerCase()) {
+                row.classList.add('flash-row');
+                setTimeout(() => {
+                    row.classList.remove('flash-row');
+                }, 1200);
+            }
+        });
+    }, 100);
+}
+
+// Toggle camera stream
+function toggleCameraStream() {
+    const feed = document.getElementById('cameraFeed');
+    const btn = document.getElementById('toggleCameraBtn');
+    const badge = document.getElementById('cameraStatusBadge');
+    
+    cameraActive = !cameraActive;
+    
+    if (cameraActive) {
+        feed.src = "/camera/video_feed";
+        btn.innerHTML = '<i class="bi bi-camera-video-off"></i> Pause Camera';
+        btn.className = "btn btn-outline-secondary py-2";
+        badge.innerText = "Camera Connected";
+        badge.className = "badge bg-success";
+        document.getElementById('scanningIndicator').classList.remove('text-muted');
+        document.getElementById('scanningIndicator').classList.add('text-success');
+        document.getElementById('scanningIndicator').innerHTML = '<i class="bi bi-circle-fill"></i> CONTINUOUS SCANNING';
+    } else {
+        feed.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='640' height='480' viewBox='0 0 640 480'><rect width='640' height='480' fill='%231f2937'/><text x='50%25' y='50%25' font-size='20' fill='%239ca3af' dominant-baseline='middle' text-anchor='middle'>CAMERA PAUSED</text></svg>";
+        btn.innerHTML = '<i class="bi bi-camera-video"></i> Resume Camera';
+        btn.className = "btn btn-success py-2";
+        badge.innerText = "Camera Paused";
+        badge.className = "badge bg-warning text-dark";
+        document.getElementById('scanningIndicator').classList.remove('text-success');
+        document.getElementById('scanningIndicator').classList.add('text-muted');
+        document.getElementById('scanningIndicator').innerHTML = '<i class="bi bi-pause-circle-fill"></i> STREAM PAUSED';
+    }
+}
+
+// Clear cart
+function clearCart() {
+    cartItems = [];
+    renderCart();
+    document.getElementById('lastScannedAlert').classList.add('d-none');
+}
+
+// Speech recognition voice command system
+let recognition = null;
+let voiceActive = false;
+
+if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = function() {
+        voiceActive = true;
+        document.getElementById('voiceBtn').innerHTML = '<i class="bi bi-mic-fill text-danger animate-pulse"></i> Listening...';
+        document.getElementById('voiceBtn').className = "btn btn-danger flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2";
+    };
+    
+    recognition.onend = function() {
+        voiceActive = false;
+        document.getElementById('voiceBtn').innerHTML = '<i class="bi bi-mic"></i> Voice Command';
+        document.getElementById('voiceBtn').className = "btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2";
+    };
+    
+    recognition.onresult = async function(event) {
+        const transcript = event.results[0][0].transcript;
+        document.getElementById('voiceQueryDisplay').innerHTML = `<strong>Spoken Query:</strong> "${transcript}"`;
+        
+        try {
+            const formData = new FormData();
+            formData.append('text_query', transcript);
+            
+            const res = await fetch('/api/voice_assist', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.action) {
+                    handleVoiceAction(data.action);
+                } else if (data.error) {
+                    showVoiceFeedback(data.error, true);
+                }
+            }
+        } catch (e) {
+            showVoiceFeedback("Voice assist request failed: " + e.message, true);
+        }
+    };
+    
+    recognition.onerror = function(event) {
+        console.error("Speech recognition error: ", event.error);
+        showVoiceFeedback("Mic error: " + event.error, true);
+    };
+} else {
+    document.getElementById('voiceBtn').disabled = true;
+    document.getElementById('voiceBtn').title = "Speech recognition not supported in this browser.";
+}
+
+function toggleVoiceCommand() {
+    if (!recognition) return;
+    if (voiceActive) {
+        recognition.stop();
+    } else {
+        recognition.start();
+    }
+}
+
+// Execute voice instruction parsed by Gemini 3.5 Flash
+function handleVoiceAction(action) {
+    if (!action) return;
+    const actType = action.action;
+    
+    if (actType === 'add_to_cart') {
+        const prodName = action.product || (action.parameters && action.parameters.product);
+        const qty = action.quantity || (action.parameters && action.parameters.quantity) || 1.0;
+        
+        if (!prodName) {
+            showVoiceFeedback("Voice assistant did not specify a product name.", true);
+            return;
+        }
+        
+        const found = warehouseProducts.find(p => p.name && p.name.toLowerCase() === prodName.toLowerCase());
+        if (found) {
+            addDetectedProductToCart(found.name, found.price, classifyGst(found.name), 1.0);
+            if (qty > 1) {
+                let idx = cartItems.findIndex(item => item.product && item.product.toLowerCase() === found.name.toLowerCase());
+                if (idx !== -1) {
+                    updateQty(idx, qty);
+                }
+            }
+            showVoiceFeedback(`Added ${qty} ${found.name} to cart.`);
+        } else {
+            showVoiceFeedback(`Product '${prodName}' not found in database.`, true);
+        }
+    } 
+    else if (actType === 'remove_from_cart') {
+        const prodName = action.product || (action.parameters && action.parameters.product);
+        if (!prodName) {
+            showVoiceFeedback("Voice assistant did not specify which product to remove.", true);
+            return;
+        }
+        let idx = cartItems.findIndex(item => item.product && item.product.toLowerCase() === prodName.toLowerCase());
+        if (idx !== -1) {
+            removeItem(idx);
+            showVoiceFeedback(`Removed ${prodName} from cart.`);
+        } else {
+            showVoiceFeedback(`Product '${prodName}' not in cart.`, true);
+        }
+    } 
+    else if (actType === 'checkout') {
+        const pm = action.payment_method || (action.parameters && action.parameters.payment_method) || 'cash';
+        setPayment(pm);
+        showVoiceFeedback(`Proceeding to checkout via ${pm}.`);
+        setTimeout(() => {
+            submitTransaction();
+        }, 1000);
+    } 
+    else if (actType === 'search') {
+        const query = action.query || (action.parameters && action.parameters.query);
+        if (!query) {
+            showVoiceFeedback("Voice assistant did not specify a search query.", true);
+            return;
+        }
+        showVoiceFeedback(`Searching for '${query}'...`);
+        
+        // Expand lookup collapse and auto fill
+        const collapseEl = document.getElementById('collapseManual');
+        if (!collapseEl.classList.contains('show')) {
+            const bsCollapse = new bootstrap.Collapse(collapseEl, { show: true });
+        }
+        
+        document.getElementById('posProduct').value = query;
+        document.getElementById('posProduct').dispatchEvent(new Event('input'));
+    } 
+    else if (actType === 'none' && action.reply) {
+        showVoiceFeedback(action.reply);
+    }
+}
+
+function showVoiceFeedback(msg, isError = false) {
+    const display = document.getElementById('voiceQueryDisplay');
+    const color = isError ? '#dc3545' : '#0d6efd';
+    display.innerHTML = `<span style="color: ${color}; font-weight: 500;"><i class="bi bi-robot"></i> ${msg}</span>`;
+}
+
+// Scanner Mode Toggle Functions
+async function changeScannerMode(mode) {
+    const simulate = (mode === 'simulated');
+    
+    try {
+        const formData = new FormData();
+        formData.append('simulate', simulate);
+        
+        const res = await fetch('/camera/toggle_mode', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index);
+            if (!data.success && !simulate) {
+                alert("Failed to connect to physical camera index. Reverting to Simulation mode.");
+            }
+        }
+    } catch (e) {
+        console.error("Error toggling camera mode: ", e);
+        document.getElementById('scannerModeSelect').value = simulate ? 'physical' : 'simulated';
+    }
+}
+
+async function changeCameraIndex(index) {
+    try {
+        const formData = new FormData();
+        formData.append('index', index);
+        
+        const res = await fetch('/camera/set_index', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index);
+            if (data.camera_error) {
+                alert("Could not open camera index " + index + ". Reverting to Simulation mode.");
+            }
+        }
+    } catch (e) {
+        console.error("Error setting camera index: ", e);
+    }
+}
+
+function updateScannerModeUI(isSimulated, cameraError, cameraIndex) {
+    const select = document.getElementById('scannerModeSelect');
+    const badge = document.getElementById('cameraModeBadge');
+    const indexSelect = document.getElementById('cameraIndexSelect');
+    const statusBadge = document.getElementById('cameraStatusBadge');
+    
+    if (cameraIndex !== undefined && indexSelect) {
+        indexSelect.value = cameraIndex.toString();
+    }
+    
+    if (isSimulated) {
+        select.value = 'simulated';
+        badge.innerText = 'Demo Simulation';
+        badge.className = 'badge bg-info text-dark';
+        if (indexSelect) indexSelect.style.display = 'none';
+        
+        if (cameraError) {
+            statusBadge.innerText = "Camera Error";
+            statusBadge.className = "badge bg-danger";
+        } else {
+            statusBadge.innerText = "Simulation Active";
+            statusBadge.className = "badge bg-secondary";
+        }
+    } else {
+        select.value = 'physical';
+        badge.innerText = 'Continuous Scanning';
+        badge.className = 'badge bg-success';
+        if (indexSelect) indexSelect.style.display = 'inline-block';
+        
+        if (cameraError) {
+            statusBadge.innerText = "Camera Error / Disconnected";
+            statusBadge.className = "badge bg-danger";
+        } else {
+            statusBadge.innerText = "Camera Connected";
+            statusBadge.className = "badge bg-success";
+        }
+    }
+}
+
+async function checkCameraStatus() {
+    try {
+        const res = await fetch('/camera/status');
+        if (res.ok) {
+            const data = await res.json();
+            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index);
+        }
+    } catch (e) {
+        console.error("Error fetching camera status: ", e);
+    }
+}
+
+// Fallback Text Command Submission
+async function submitTextCommand() {
+    const input = document.getElementById('textCommandInput');
+    const transcript = input.value.trim();
+    if (!transcript) return;
+    
+    document.getElementById('voiceQueryDisplay').innerHTML = `<strong>Typed Query:</strong> "${transcript}"`;
+    input.value = '';
+    
+    try {
+        const formData = new FormData();
+        formData.append('text_query', transcript);
+        
+        const res = await fetch('/api/voice_assist', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.action) {
+                handleVoiceAction(data.action);
+            } else if (data.error) {
+                showVoiceFeedback(data.error, true);
+            }
+        } else {
+            showVoiceFeedback("Server error processing command.", true);
+        }
+    } catch (e) {
+        showVoiceFeedback("Voice assist request failed: " + e.message, true);
+    }
+}
+
+// Add manual lookup DOM bindings
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadWarehouseProducts();
+    await checkCameraStatus();
+    initCameraEvents();
+    
+    // Poll camera status periodically to detect disconnected states
+    setInterval(checkCameraStatus, 3000);
+    
+    // Bind enter key on text command input
+    document.getElementById('textCommandInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            submitTextCommand();
+        }
+    });
+});
+
+document.getElementById('posProduct').addEventListener('input', function(e) {
+    const product = e.target.value.toLowerCase();
+    
+    // Auto-fill price if product found in warehouse
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === product);
+    if (foundProduct) {
+        document.getElementById('posPrice').value = foundProduct.price;
+    }
+    
+    // Smart Detection Keywords
+    isWeightBased = isWeightBasedProduct(product);
+    
+    const qtyInput = document.getElementById('posQuantity');
+    const lblQty = document.getElementById('lblQuantity');
+    const priceInput = document.getElementById('posPrice');
+    const lblPrice = document.getElementById('lblPrice');
+    
+    if (isWeightBased) {
+        lblQty.innerText = 'Weight (kg/g)';
+        qtyInput.placeholder = 'Enter Weight (e.g. 1.5)';
+        qtyInput.step = 'any';
+        lblPrice.innerText = 'Price per kg (₹)';
+        priceInput.placeholder = 'Enter Price per kg';
+    } else {
+        lblQty.innerText = 'Quantity';
+        qtyInput.placeholder = 'Enter Quantity';
+        qtyInput.removeAttribute('step');
+        lblPrice.innerText = 'Unit Price (₹)';
+        priceInput.placeholder = 'Enter Unit Price';
+    }
+    updateLiveTotal();
+});
+
+function classifyGst(product) {
+    const p = product.toLowerCase();
+    
+    const zeroGst = ["tomato", "potato", "onion", "carrot", "spinach", "broccoli", "cabbage", "apple", "banana", "orange", "mango", "grapes", "strawberry", "pineapple", "milk", "water", "eggs", "salt", "vegetable", "fruit", "book"];
+    if (zeroGst.some(x => p.includes(x))) return 0;
+    
+    const fiveGst = ["tea", "coffee", "sugar", "rice", "pasta", "flour", "spices", "bread", "cheese", "butter", "medicine", "food", "paneer"];
+    if (fiveGst.some(x => p.includes(x))) return 5;
+    
+    const eighteenGst = ["tv", "laptop", "mobile", "headphones", "smartwatch", "camera", "ac", "refrigerator", "soap", "shampoo", "toothpaste", "detergent", "tissue paper", "trash bags", "towel", "bedsheet", "electronics", "maggi", "lays", "kurkure", "parle g", "good day", "biscuits"];
+    if (eighteenGst.some(x => p.includes(x))) return 18;
+    
+    const twentyeightGst = ["car", "bike", "watch", "perfume", "jewelry", "beer", "wine", "soda", "luxury", "coca cola", "pepsi", "sprite", "juice"];
+    if (twentyeightGst.some(x => p.includes(x))) return 28;
+    
+    return 12;
+}
+
+function updateLiveTotal() {
+    const product = document.getElementById('posProduct').value;
+    const price = parseFloat(document.getElementById('posPrice').value) || 0;
+    const qty = parseFloat(document.getElementById('posQuantity').value) || 0;
+    const subtotal = price * qty;
+    const gstRate = product ? classifyGst(product) : 0;
+    const total = subtotal + (subtotal * gstRate / 100);
+    
+    if (gstRate > 0 && total > 0) {
+        document.getElementById('liveTotal').innerHTML = `${total.toFixed(2)} <span style="font-size: 0.55em; color: #64748b; font-weight: normal;">(incl. ${gstRate}% GST)</span>`;
+    } else {
+        document.getElementById('liveTotal').innerText = total.toFixed(2);
+    }
+}
+
+document.getElementById('posPrice').addEventListener('input', updateLiveTotal);
+document.getElementById('posQuantity').addEventListener('input', updateLiveTotal);
+
+document.getElementById('addToCartForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const product = document.getElementById('posProduct').value;
+    const price = parseFloat(document.getElementById('posPrice').value);
+    const quantity = parseFloat(document.getElementById('posQuantity').value);
+
+    if (price <= 0 || quantity <= 0) {
+        alert('Price and Quantity must be greater than 0');
+        return;
+    }
+    
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === product.toLowerCase());
+    if (!foundProduct) {
+        alert('This product is not listed in the warehouse. Please add it first.');
+        return;
+    }
+    
+    let currentCartQty = 0;
+    cartItems.forEach(item => {
+        if (item.product.toLowerCase() === product.toLowerCase()) {
+            currentCartQty += item.quantity;
+        }
+    });
+
+    if (currentCartQty + quantity > foundProduct.stock) {
+        alert(`Cannot add ${quantity} more! You only have ${foundProduct.stock} units total in stock, and ${currentCartQty} are already in your cart.`);
+        return;
+    }
+
+    cartItems.push({ product: foundProduct.name, price, quantity, isWeight: isWeightBased });
+    
+    document.getElementById('posProduct').value = '';
+    document.getElementById('posPrice').value = '';
+    document.getElementById('posQuantity').value = '';
+    document.getElementById('liveTotal').innerText = '0.00';
+    
+    // Reset inputs
+    isWeightBased = false;
+    document.getElementById('lblQuantity').innerText = 'Quantity';
+    document.getElementById('posQuantity').placeholder = 'Enter Quantity';
+    document.getElementById('posQuantity').removeAttribute('step');
+    document.getElementById('lblPrice').innerText = 'Unit Price (₹)';
+    document.getElementById('posPrice').placeholder = 'Enter Unit Price';
+    
+    renderCart();
+    highlightCartRow(foundProduct.name);
+    playScanBeep();
+});
+
+function renderCart() {
+    const tbody = document.getElementById('cartBody');
+    tbody.innerHTML = '';
+    
+    let subtotal = 0;
+    let totalTax = 0;
+    let grandTotal = 0;
+    
+    cartItems.forEach((item, index) => {
+        const itemSubtotal = item.price * item.quantity;
+        const gstRate = classifyGst(item.product);
+        const itemGst = itemSubtotal * gstRate / 100;
+        const itemTotal = itemSubtotal + itemGst;
+        
+        subtotal += itemSubtotal;
+        totalTax += itemGst;
+        grandTotal += itemTotal;
+        
+        let stepAttr = item.isWeight ? 'step="any"' : '';
+        let inputSuffix = item.isWeight ? '<span class="input-group-text p-1" style="font-size: 0.8rem;">kg</span>' : '';
+        
+        tbody.innerHTML += `
+            <tr>
+                <td class="align-middle">${item.product}</td>
+                <td class="align-middle">₹${item.price.toFixed(2)}</td>
+                <td class="align-middle" style="width: 110px;">
+                    <div class="input-group input-group-sm">
+                        <input type="number" class="form-control" value="${item.quantity}" ${stepAttr} onchange="updateQty(${index}, this.value)">
+                        ${inputSuffix}
+                    </div>
+                </td>
+                <td class="align-middle" style="font-size: 0.9em; color: #64748b;">₹${itemGst.toFixed(2)} (${gstRate}%)</td>
+                <td class="align-middle" style="font-weight: 500;">₹${itemTotal.toFixed(2)}</td>
+                <td class="align-middle">
+                    <button type="button" class="btn btn-sm btn-danger" onclick="removeItem(${index})">X</button>
+                </td>
+            </tr>
+        `;
+    });
+    
+    document.getElementById('cartSubtotal').innerText = subtotal.toFixed(2);
+    document.getElementById('cartTax').innerText = totalTax.toFixed(2);
+    document.getElementById('cartTotal').innerText = grandTotal.toFixed(2);
+    
+    if (cartItems.length > 0) {
+        document.getElementById('proceedBtn').style.display = 'block';
+    } else {
+        document.getElementById('proceedBtn').style.display = 'none';
+        document.getElementById('paymentSection').style.display = 'none';
+    }
+}
+
+function updateQty(index, newQty) {
+    let val = parseFloat(newQty);
+    if (isNaN(val) || val <= 0) val = 1;
+    
+    if (!cartItems[index].isWeight) {
+        val = parseInt(val);
+    }
+    
+    const itemToUpdate = cartItems[index];
+    const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === itemToUpdate.product.toLowerCase());
+    
+    if (foundProduct) {
+        let otherCartQty = 0;
+        cartItems.forEach((item, i) => {
+            if (i !== index && item.product.toLowerCase() === itemToUpdate.product.toLowerCase()) {
+                otherCartQty += item.quantity;
+            }
+        });
+
+        if (otherCartQty + val > foundProduct.stock) {
+            alert(`Cannot update to ${val}! You only have ${foundProduct.stock} units total in stock.`);
+            val = foundProduct.stock - otherCartQty;
+            if (val <= 0) val = 1; 
+        }
+    }
+    
+    cartItems[index].quantity = val;
+    renderCart();
+}
+
+function removeItem(index) {
+    cartItems.splice(index, 1);
+    renderCart();
+}
+
+function showPayment() {
+    document.getElementById('paymentSection').style.display = 'block';
+    document.getElementById('proceedBtn').style.display = 'none';
+}
+
+function setPayment(method) {
+    paymentMethod = method;
+    if(method === 'cash') {
+        document.getElementById('btnCash').classList.add('active');
+        document.getElementById('btnCard').classList.remove('active');
+    } else {
+        document.getElementById('btnCard').classList.add('active');
+        document.getElementById('btnCash').classList.remove('active');
+    }
+}
+
+async function submitTransaction() {
+    if (cartItems.length === 0) return;
+
+    const payload = cartItems.map(item => ({
+        product: item.product,
+        price: Number(item.price),
+        quantity: Number(item.quantity)
+    }));
+
+    const response = await fetch('/add_multiple', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/pdf, application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+        if (response.ok) {
+            const contentType = response.headers.get('Content-Type') || '';
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                if (data.ok) {
+                    alert(data.message || 'Payment received and sale saved.');
+                } else {
+                    alert(data.error || 'Could not complete this payment. Please try again.');
+                    return;
+                }
+            } else {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'invoice.pdf';
+                if (contentDisposition) {
+                    const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                    if (filenameMatch && filenameMatch.length >= 2) {
+                        filename = filenameMatch[1];
+                    }
+                }
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                alert('Payment received. Invoice downloaded.');
+            }
+            cartItems = [];
+            renderCart();
+            document.getElementById('paymentSection').style.display = 'none';
+            document.getElementById('lastScannedAlert').classList.add('d-none');
+        } else {
+            let msg = 'Unable to complete the sale. Please try again.';
+            try {
+                const data = await response.json();
+                if (data && (data.error || data.detail)) {
+                    msg = data.error || (typeof data.detail === 'string' ? data.detail : msg);
+                }
+            } catch (e) {}
+            alert(msg);
+        }
+}
+</script>
+
+</body>
+</html>

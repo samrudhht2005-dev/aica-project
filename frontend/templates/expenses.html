@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - Expense Management & OCR</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .ocr-upload-box {
+            border: 1.5px dashed var(--border-strong);
+            padding: 28px;
+            border-radius: var(--radius);
+            text-align: center;
+            background: var(--surface-2);
+            cursor: pointer;
+            transition: border-color 0.2s ease, background 0.2s ease;
+        }
+        .ocr-upload-box:hover {
+            border-color: var(--accent);
+            background: var(--accent-soft);
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import ca_tip, field_explain, page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.expensesTitle">Expenses Ledger & AI Auditor</h1>
+            <p class="hero-subtitle" data-i18n="pages.expensesSub">Every bill you add here immediately changes GST, profit, and tax planning on the other pages.</p>
+        </div>
+    </div>
+
+    {{ page_intro("Why this page exists", "A CA’s first job is to separate business costs from personal drawings. Business bills reduce profit and may create Input Tax Credit. Personal spends do neither. Employee welfare / food / cars are often blocked for GST even if they are business.") }}
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="metric-card p-3 border rounded-4">
+                <span class="text-muted small">Business bills {{ ca_tip("Business bills", "Sum of expenses marked Business. These hit your P&L and feed GST ITC (unless blocked).") }}</span>
+                <h4 class="mb-0">₹{{ "{:,.2f}".format(business_expense_total) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card p-3 border rounded-4">
+                <span class="text-muted small">Personal {{ ca_tip("Personal", "Owner drawings / private spends. Kept out of profit and ITC so the books stay defensible.") }}</span>
+                <h4 class="mb-0">₹{{ "{:,.2f}".format(personal_expense_total) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card p-3 border rounded-4">
+                <span class="text-muted small">Eligible ITC</span>
+                <h4 class="mb-0 text-success">₹{{ "{:,.2f}".format(eligible_itc) }}</h4>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="metric-card p-3 border rounded-4">
+                <span class="text-muted small">Blocked ITC</span>
+                <h4 class="mb-0 text-danger">₹{{ "{:,.2f}".format(blocked_itc) }}</h4>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <!-- AI OCR Upload and Results -->
+        <div class="col-md-7">
+            <div class="modern-card">
+                <h4 class="card-heading"><i class="bi bi-file-earmark-arrow-up-fill text-primary"></i> Upload invoice {{ ca_tip("OCR", "Upload a GST invoice. AICA reads vendor, taxable value and tax, then classifies the spend. After save, dashboard GST and profit refresh.") }}</h4>
+                
+                <div class="ocr-upload-box mb-3" onclick="document.getElementById('ocrFile').click()">
+                    <i class="bi bi-cloud-arrow-up" style="font-size: 3rem; color: var(--primary);"></i>
+                    <p class="mt-2 font-weight-bold">Drag and drop or click to upload receipt invoice</p>
+                    <span class="text-muted small">Supports PDFs, JPEGs, and PNGs</span>
+                    <input type="file" id="ocrFile" style="display: none;" onchange="uploadInvoice(this)">
+                </div>
+
+                <div id="ocrLoading" class="text-center py-4 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">AICA is parsing invoice text and auditing tax rules...</p>
+                </div>
+
+                <!-- Live OCR result analysis card -->
+                <div id="ocrResultCard" class="card d-none" style="border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface-2); padding: 20px;">
+                    <h5 class="font-weight-bold text-primary"><i class="bi bi-cpu"></i> Invoice extracted</h5>
+                    <hr>
+                    <div class="row g-3">
+                        <div class="col-6"><strong>Vendor:</strong> <span id="ocrVendor"></span></div>
+                        <div class="col-6"><strong>Invoice No:</strong> <span id="ocrInvNo"></span></div>
+                        <div class="col-6"><strong>Taxable Value:</strong> ₹<span id="ocrTaxable"></span></div>
+                        <div class="col-6"><strong>GST Tax:</strong> ₹<span id="ocrTax"></span></div>
+                        <div class="col-12"><strong>AI Classification Category:</strong> <span id="ocrCategory" class="badge bg-primary"></span> &gt; <span id="ocrSubcategory"></span></div>
+                        <div class="col-6"><strong>ITC Eligibility:</strong> <span id="ocrItc"></span></div>
+                        <div class="col-6"><strong>Type:</strong> <span id="ocrClass" class="badge bg-secondary"></span></div>
+                        <div class="col-12"><strong>AI Explanation:</strong> <span id="ocrExplanation" class="text-muted small italic"></span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Manual Expense Add -->
+        <div class="col-md-5">
+            <div class="modern-card">
+                <h4 class="card-heading"><i class="bi bi-plus-circle-fill text-success"></i> Add expense</h4>
+                {% if error %}
+                <div class="alert alert-warning py-2 small">{{ error }}</div>
+                {% endif %}
+                <form action="/api/expenses/create" method="POST" id="expenseForm">
+                    {{ field_explain("Vendor", "Vendor", "Name on the invoice / who you paid. Needed to match GSTR-2B later.") }}
+                    <input type="text" name="vendor" class="form-control modern-input" placeholder="Vendor name" required>
+
+                    {{ field_explain("Invoice number", "Invoice number", "GST invoice number. Without it, ITC is hard to defend in a notice.") }}
+                    <input type="text" name="invoice_number" class="form-control modern-input" placeholder="Invoice number (optional)">
+
+                    <div class="row g-2">
+                        <div class="col-6">
+                            {{ field_explain("Category", "Category", "Drives GST rate from tax rules and blocked-credit treatment.") }}
+                            <select name="category" id="expCategory" class="form-select modern-input" required>
+                                {% for cat in expense_categories %}
+                                <option value="{{ cat }}">{{ cat }}</option>
+                                {% else %}
+                                <option value="Rent">Rent</option>
+                                <option value="Technology">Technology</option>
+                                <option value="Professional Fees">Professional Fees</option>
+                                <option value="Office Supplies">Office Supplies</option>
+                                <option value="Salaries">Salaries</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small text-muted">Subcategory</label>
+                            <input type="text" name="subcategory" class="form-control modern-input" placeholder="e.g. WiFi">
+                        </div>
+                    </div>
+
+                    {{ field_explain("Taxable amount", "Taxable amount", "Value before GST. AICA calculates CGST/SGST or IGST from your tax rules and place of supply.") }}
+                    <input type="number" step="any" name="amount" id="expAmount" class="form-control modern-input" placeholder="Taxable amount (₹)" required>
+
+                    {{ field_explain("Supplier state", "Supplier state", "Compared with your organisation state. Same state → CGST+SGST. Different state → IGST.") }}
+                    <input type="text" name="supplier_state" id="expSupplierState" class="form-control modern-input" placeholder="e.g. Karnataka" value="{{ org_state or '' }}" {% if gst_registered %}required{% endif %}>
+                    {% if not gst_registered %}
+                    <p class="text-muted small mb-2">Your organisation is not marked GST-registered — expenses will be saved without GST.</p>
+                    {% endif %}
+
+                    <div class="tax-summary" id="taxSummary">
+                        <div class="row-line"><span>Subtotal</span><strong id="taxSubtotal">₹0.00</strong></div>
+                        <div class="row-line"><span>GST rate</span><strong id="taxRate">—</strong></div>
+                        <div class="row-line" id="lineCgst"><span>CGST</span><strong id="taxCgst">₹0.00</strong></div>
+                        <div class="row-line" id="lineSgst"><span>SGST</span><strong id="taxSgst">₹0.00</strong></div>
+                        <div class="row-line" id="lineIgst"><span>IGST</span><strong id="taxIgst">₹0.00</strong></div>
+                        <div class="row-line"><span>Total GST</span><strong id="taxTotalGst">₹0.00</strong></div>
+                        <div class="row-line total-line"><span>Total expense</span><span id="taxGrand">₹0.00</span></div>
+                        <div class="text-muted small mt-2" id="taxNote"></div>
+                    </div>
+
+                    <select name="payment_method" class="form-select modern-input">
+                        <option value="Cash">Cash</option>
+                        <option value="Card">Card</option>
+                        <option value="Bank Transfer">Bank Transfer</option>
+                    </select>
+
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            {{ field_explain("Revenue vs capital", "Classification", "Revenue = day-to-day cost. Capital = long-life asset — also capitalise under Fixed Assets.") }}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="classification" value="Revenue" checked id="classRev">
+                                <label class="form-check-label" for="classRev">Revenue</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="classification" value="Capital" id="classCap">
+                                <label class="form-check-label" for="classCap">Capital</label>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            {{ field_explain("Business vs personal", "Purpose", "Business: deductible and may get ITC. Personal: not deductible, no ITC.") }}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_business" value="true" checked id="busTrue">
+                                <label class="form-check-label" for="busTrue">Business</label>
+                            </div>
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="radio" name="is_business" value="false" id="busFalse">
+                                <label class="form-check-label" for="busFalse">Personal</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <input type="text" name="description" class="form-control modern-input" placeholder="Short description">
+                    <button type="submit" class="btn modern-btn w-100 btn-sm mt-2">Record expense</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expenses Ledger List -->
+    <div class="modern-card">
+        <h4 class="card-heading"><i class="bi bi-card-list text-primary"></i> Business Expenses Ledger</h4>
+        <div class="table-responsive">
+            <table class="table align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>Date</th>
+                        <th>Vendor / INV#</th>
+                        <th>Category</th>
+                        <th>Taxable Value</th>
+                        <th>GST Paid</th>
+                        <th>Payment</th>
+                        <th>Class</th>
+                        <th>Eligibility</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for exp in expenses %}
+                        <tr>
+                            <td>{{ exp.date.strftime('%Y-%m-%d') }}</td>
+                            <td>
+                                <strong>{{ exp.vendor }}</strong>
+                                <div class="text-muted small">INV#: {{ exp.invoice_number if exp.invoice_number else 'N/A' }}</div>
+                            </td>
+                            <td>
+                                <span class="badge bg-light text-dark border">{{ exp.category }}</span>
+                                <div class="text-muted small">{{ exp.subcategory }}</div>
+                            </td>
+                            <td>₹{{ "{:,.2f}".format(exp.amount) }}</td>
+                            <td class="text-danger">₹{{ "{:,.2f}".format(exp.total_tax) }}</td>
+                            <td>{{ exp.payment_method }}</td>
+                            <td><span class="badge {% if exp.classification == 'Revenue' %}bg-secondary{% else %}bg-info{% endif %}">{{ exp.classification }}</span></td>
+                            <td>
+                                {% if exp.category in ["Employee Welfare", "Food & Beverages", "Motor Vehicles"] %}
+                                    <span class="badge bg-danger" title="Blocked under Section 17(5)">Blocked Sec 17(5)</span>
+                                {% elif not exp.is_business %}
+                                    <span class="badge bg-warning text-dark">Personal (No ITC)</span>
+                                {% else %}
+                                    <span class="badge bg-success">ITC Eligible</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form action="/api/expenses/delete/{{ exp.id }}" method="POST" onsubmit="return confirm('Delete this record?')">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit"><i class="bi bi-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr>
+                            <td colspan="9" class="text-center text-muted">No expenses recorded yet. Use the OCR Uploader or the form above.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+<script>
+async function uploadInvoice(input) {
+    const file = input.files[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    document.getElementById('ocrLoading').classList.remove('d-none');
+    document.getElementById('ocrResultCard').classList.add('d-none');
+    
+    try {
+        const response = await fetch('/api/expenses/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                // Populate Results
+                document.getElementById('ocrVendor').innerText = data.extracted.vendor;
+                document.getElementById('ocrInvNo').innerText = data.extracted.invoice_number;
+                document.getElementById('ocrTaxable').innerText = parseFloat(data.extracted.taxable_value).toFixed(2);
+                document.getElementById('ocrTax').innerText = parseFloat(data.extracted.total_tax).toFixed(2);
+                document.getElementById('ocrCategory').innerText = data.classification.category;
+                document.getElementById('ocrSubcategory').innerText = data.classification.subcategory;
+                document.getElementById('ocrClass').innerText = data.classification.classification;
+                document.getElementById('ocrItc').innerText = data.classification.potential_itc_eligible;
+                document.getElementById('ocrExplanation').innerText = data.classification.explanation;
+                
+                document.getElementById('ocrResultCard').classList.remove('d-none');
+                setTimeout(function () { window.location.reload(); }, 1600);
+            } else {
+                alert("OCR Extraction failed.");
+            }
+        } else {
+            alert("Error connecting to OCR API.");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("OCR Service Error.");
+    } finally {
+        document.getElementById('ocrLoading').classList.add('d-none');
+    }
+}
+
+function inr(n) {
+    return '₹' + (Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+let taxPreviewTimer = null;
+async function refreshTaxPreview() {
+    const category = document.getElementById('expCategory')?.value || '';
+    const amount = document.getElementById('expAmount')?.value || 0;
+    const supplierState = document.getElementById('expSupplierState')?.value || '';
+    const params = new URLSearchParams({ category, amount, supplier_state: supplierState });
+    try {
+        const res = await fetch('/api/expenses/tax-preview?' + params.toString(), { credentials: 'same-origin' });
+        const data = await res.json();
+        document.getElementById('taxSubtotal').textContent = inr(amount);
+        if (!data.ok) {
+            document.getElementById('taxRate').textContent = '—';
+            document.getElementById('taxCgst').textContent = inr(0);
+            document.getElementById('taxSgst').textContent = inr(0);
+            document.getElementById('taxIgst').textContent = inr(0);
+            document.getElementById('taxTotalGst').textContent = inr(0);
+            document.getElementById('taxGrand').textContent = inr(amount);
+            document.getElementById('taxNote').textContent = data.error || '';
+            return;
+        }
+        document.getElementById('taxRate').textContent = (data.rate || 0) + '%';
+        document.getElementById('taxCgst').textContent = inr(data.cgst);
+        document.getElementById('taxSgst').textContent = inr(data.sgst);
+        document.getElementById('taxIgst').textContent = inr(data.igst);
+        document.getElementById('taxTotalGst').textContent = inr(data.total_tax);
+        document.getElementById('taxGrand').textContent = inr(data.total_amount);
+        document.getElementById('taxNote').textContent = data.note || (data.split === 'intra' ? 'Intra-state: CGST + SGST' : data.split === 'inter' ? 'Inter-state: IGST' : '');
+        document.getElementById('lineCgst').style.display = data.split === 'inter' ? 'none' : 'flex';
+        document.getElementById('lineSgst').style.display = data.split === 'inter' ? 'none' : 'flex';
+        document.getElementById('lineIgst').style.display = data.split === 'intra' ? 'none' : 'flex';
+    } catch (e) {
+        document.getElementById('taxNote').textContent = 'Could not preview tax.';
+    }
+}
+
+['expCategory', 'expAmount', 'expSupplierState'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+        clearTimeout(taxPreviewTimer);
+        taxPreviewTimer = setTimeout(refreshTaxPreview, 250);
+    });
+    el.addEventListener('change', refreshTaxPreview);
+});
+refreshTaxPreview();
+</script>
+
+</body>
+</html>

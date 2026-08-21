@@ -1,0 +1,70 @@
+# --- Secrets / local env ---
+.env
+.env.*
+!.env.example
+
+# --- Python ---
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Session / runtime secrets ---
+database/.session_secret
+*.pem
+*.key
+
+# --- Local / empty SQLite leftover (AICA uses PostgreSQL) ---
+aica.db
+*.sqlite3
+
+# --- Node (if added later) ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# --- IDE / OS ---
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Training datasets & run artifacts (large; not required to run the web app) ---
+# Keep training/scripts and dataset/*/data.yaml docs via selective add if needed.
+dataset/
+training/runs/
+runs/
+
+# --- Regenerable base YOLO checkpoints (downloaded by Ultralytics) ---
+/yolo26n.pt
+/yolov8n.pt
+/yolov8*.pt
+/yolo11*.pt
+/yolo26*.pt
+
+# Duplicate / intermediate detector weights (production weight is vision/weights/)
+vision/best.pt
+
+# --- Logs / temp ---
+*.log
+.tmp/
+.cache/
+*.tmp
+
+# --- Local scratch / one-off test helpers (optional; keep if you want them) ---
+# _test_*.py are useful regression scripts — left tracked unless you prefer otherwise

@@ -1,0 +1,35 @@
+names:
+  0: Maggi
+  1: Lays
+  2: Kurkure
+  3: Parle G
+  4: Dairy Milk
+  5: Good Day
+  6: Coca Cola
+  7: Pepsi
+  8: Sprite
+  9: Milk
+  10: Bread
+  11: Eggs
+  12: Sugar
+  13: Salt
+  14: Rice
+  15: Wheat Flour
+  16: Soap
+  17: Shampoo
+  18: Toothpaste
+  19: Detergent
+  20: Oil
+  21: Tea
+  22: Coffee
+  23: Biscuits
+  24: Juice
+  25: Butter
+  26: Cheese
+  27: Paneer
+  28: Onion
+  29: Potato
+path: c:/Users/Samrudh/Downloads/aica-project/dataset
+test: images/test
+train: images/train
+val: images/val

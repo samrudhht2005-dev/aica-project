@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - AI Tax Optimization Engine</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .opt-card {
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 25px;
+            background: var(--surface);
+            transition: all 0.3s ease;
+        }
+        .opt-card:hover {
+            box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+            border-color: var(--primary);
+        }
+        .badge-priority {
+            font-size: 0.8rem;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.optimizationTitle">AI Legal Tax Optimization</h1>
+            <p class="hero-subtitle">Each card is generated from your current ledger — add an expense or hire and refresh this page</p>
+        </div>
+    </div>
+
+    {{ page_intro("How to use these cards", "Read the reason, the section, and the documents listed. Treat the rupee impact as a planning estimate, not a filed figure. Keep appointment letters, invoices and GSTR-2B before you claim.") }}
+
+    <!-- Recommendations Feed -->
+    <div class="row">
+        <div class="col-12">
+            
+            {% for rec in recommendations %}
+                <div class="opt-card fade-in-up">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                        <div>
+                            <span class="badge bg-light text-dark border me-2">{{ rec.rule_section }}</span>
+                            <span class="badge bg-warning text-dark badge-priority">{{ rec.severity }} Priority</span>
+                            <h4 class="font-weight-bold mt-2 text-dark">{{ rec.title }}</h4>
+                        </div>
+                        <div class="text-end">
+                            <span class="text-muted small">Estimated Tax Impact</span>
+                            <h3 class="font-weight-bold text-success m-0">₹{{ "{:,.2f}".format(rec.estimated_tax_impact) }}</h3>
+                        </div>
+                    </div>
+                    
+                    <div class="row g-4 mt-1">
+                        <div class="col-md-8">
+                            <p><strong>Reason Detected:</strong> {{ rec.reason }}</p>
+                            <p class="text-muted small"><strong>Conditions for Claim:</strong> {{ rec.eligibility_conditions }}</p>
+                            
+                            <div class="mt-3 p-3 bg-light rounded" style="border-left: 3px solid var(--primary);">
+                                <strong>Required Evidence/Documents:</strong>
+                                <div class="small text-muted mt-1">{{ rec.required_documents }}</div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 border-start">
+                            <div class="mb-3">
+                                <strong>Confidence Level:</strong>
+                                <div class="progress mt-1" style="height: 8px;">
+                                    <div class="progress-bar bg-success" role="progressbar" style="width: {{ rec.confidence_level }}%"></div>
+                                </div>
+                                <span class="small text-success">{{ rec.confidence_level }}% (Audited Rule-Match)</span>
+                            </div>
+                            <div class="mb-3">
+                                <strong>Audit Verification Status:</strong>
+                                <div class="small mt-1"><i class="bi bi-shield-alert text-warning"></i> {{ rec.status }}</div>
+                            </div>
+                            <div class="alert alert-warning p-2 small m-0" style="font-size: 0.78rem;">
+                                <i class="bi bi-exclamation-circle-fill"></i> Warning: Claims must be verified before filing returns.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="modern-card text-center py-5">
+                    <i class="bi bi-shield-check text-success" style="font-size: 4rem;"></i>
+                    <h5 class="mt-3 font-weight-bold">Scan Complete. No optimizations found.</h5>
+                    <p class="text-muted small">Add payroll, capital assets or business expenses. This list is rebuilt from the live books each visit.</p>
+                </div>
+            {% endfor %}
+            
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+
+</body>
+</html>

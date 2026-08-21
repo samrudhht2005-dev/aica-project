@@ -1,0 +1,177 @@
+{
+  "gst_rules": {
+    "itc_eligibility": {
+      "section": "Section 16, CGST Act",
+      "description": "Eligibility conditions for claiming Input Tax Credit (ITC) on business purchases.",
+      "conditions": [
+        "The buyer must possess a valid tax invoice or debit note issued by a registered supplier.",
+        "The buyer must have received the underlying goods and/or services.",
+        "The tax charged on the supply must have been paid to the government by the supplier.",
+        "The buyer must have filed their monthly/quarterly GST return (Form GSTR-3B).",
+        "The supplier must upload the invoice to the GST portal, appearing in the buyer's Form GSTR-2B."
+      ],
+      "required_documents": [
+        "Tax Invoice",
+        "Debit Note",
+        "Bill of Entry (for Imports)",
+        "Self-Invoice (for Reverse Charge Mechanism)"
+      ]
+    },
+    "blocked_credits": {
+      "section": "Section 17(5), CGST Act",
+      "description": "Purchases for which Input Tax Credit (ITC) is strictly blocked and cannot be claimed, even if used for business purposes.",
+      "categories": {
+        "Motor Vehicles": "ITC is blocked for motor vehicles carrying 13 or fewer passengers unless used for passenger transportation, goods transportation, or driving school training.",
+        "Food, Beverages & Catering": "ITC is blocked on food and beverages, outdoor catering, beauty treatment, health services, cosmetic and plastic surgery unless used for making outward supplies of the same category.",
+        "Employee Welfare & Benefits": "ITC is blocked on club memberships, fitness/health center memberships, travel benefits to employees on vacation (LTA), and life/health insurance, unless mandatory by law for the employer to provide.",
+        "Personal Consumption": "ITC is blocked on any goods or services used for personal consumption rather than business use.",
+        "Lost, Stolen or Gifted Goods": "ITC is blocked on goods lost, stolen, destroyed, written off, or disposed of by way of gift or free samples.",
+        "Works Contract Services": "ITC is blocked on works contract services for construction of an immovable property (except plant and machinery) on own account."
+      }
+    },
+    "expense_category_rates": {
+      "description": "Default GST rates applied to inward expense categories when the organisation is GST-registered. Rates follow common Indian GST classifications for services and goods. Place of supply (intra vs inter-state) decides CGST+SGST vs IGST.",
+      "categories": {
+        "Rent": { "rate": 18.0, "treatment": "taxable", "note": "Commercial rent typically attracts 18% GST." },
+        "Technology": { "rate": 18.0, "treatment": "taxable", "note": "IT / software / SaaS services commonly 18%." },
+        "Utilities": { "rate": 18.0, "treatment": "taxable", "note": "Many utility-related supplies; electricity itself may be outside GST depending on supplier invoice." },
+        "Salaries": { "rate": 0.0, "treatment": "exempt", "note": "Salary is not a GST supply." },
+        "Marketing": { "rate": 18.0, "treatment": "taxable", "note": "Advertising and marketing services typically 18%." },
+        "Travel": { "rate": 5.0, "treatment": "taxable", "note": "Passenger transport / travel agency rates vary; default 5% for common travel expenses unless invoice shows otherwise." },
+        "Professional Fees": { "rate": 18.0, "treatment": "taxable", "note": "Legal, CA, consulting services typically 18%." },
+        "Office Supplies": { "rate": 18.0, "treatment": "taxable", "note": "Stationery and office goods commonly 18%." },
+        "Insurance": { "rate": 18.0, "treatment": "taxable", "note": "General insurance services typically 18%." },
+        "Capital Asset": { "rate": 18.0, "treatment": "taxable", "note": "Most capital goods (computers, equipment) commonly 18%." },
+        "Employee Welfare": { "rate": 18.0, "treatment": "taxable", "note": "GST may apply on the purchase; ITC is often blocked under Sec 17(5)." },
+        "Food & Beverages": { "rate": 5.0, "treatment": "taxable", "note": "Restaurant / food supplies often 5% without ITC; ITC usually blocked." },
+        "Motor Vehicles": { "rate": 28.0, "treatment": "taxable", "note": "Motor vehicles often 28%; ITC frequently blocked under Sec 17(5)." }
+      }
+    }
+  },
+  "income_tax_rules": {
+    "corporate_tax_rates": {
+      "standard": {
+        "turnover_under_400cr": {
+          "section": "Section 115JB / Standard rate",
+          "rate": 25.0,
+          "description": "Domestic company where turnover in the previous year did not exceed Rs. 400 crore."
+        },
+        "turnover_over_400cr": {
+          "section": "Standard rate",
+          "rate": 30.0,
+          "description": "Domestic company where turnover in the previous year exceeded Rs. 400 crore."
+        }
+      },
+      "new_regimes": {
+        "section_115baa": {
+          "rate": 22.0,
+          "effective_rate_incl_surcharge_cess": 25.17,
+          "description": "Concessional tax rate option for domestic companies without claiming specified incentives/deductions.",
+          "conditions": "No deductions allowed (under sections 10AA, 32(1)(iia) additional depreciation, 32AD, 33AB, 35 scientific research, or chapter VI-A except 80JJAA)."
+        },
+        "section_115bab": {
+          "rate": 15.0,
+          "effective_rate_incl_surcharge_cess": 17.16,
+          "description": "Concessional tax rate option for new manufacturing domestic companies incorporated on or after Oct 1, 2019.",
+          "conditions": "Must commence production before March 31, 2024. No deductions or exemptions allowed."
+        }
+      }
+    },
+    "deductions": {
+      "section_80jjaa": {
+        "title": "Deduction for Employment of New Employees",
+        "section": "Section 80JJAA, Income Tax Act",
+        "description": "A tax incentive allowing a deduction of 30% of the additional employee cost (emoluments paid to new employees) for 3 consecutive assessment years.",
+        "conditions": [
+          "The business is not formed by splitting up or reconstruction of an existing business.",
+          "The number of employees must increase by at least 10% (or 10 employees for smaller firms, or any increase in the first year).",
+          "The monthly gross salary of the new employee must not exceed Rs. 25,000.",
+          "The employee must have been employed for at least 240 days in the financial year (or 150 days in the case of apparel, footwear, or leather manufacturing).",
+          "The employee must participate in the Employee Provident Fund (EPF) scheme.",
+          "The tax audit report (Form 10DA) must be filed by a Chartered Accountant."
+        ],
+        "required_documents": [
+          "Form 10DA (Chartered Accountant Certificate)",
+          "Employee EPF contribution sheets",
+          "Monthly Payroll Ledger"
+        ],
+        "deduction_percentage": 30.0,
+        "duration_years": 3
+      }
+    },
+    "depreciation_rates": {
+      "section": "Section 32, Income Tax Act",
+      "description": "Depreciation allowance computed using the Written Down Value (WDV) method on block of assets.",
+      "rates": {
+        "Computers & Software": 40.0,
+        "Plant & Machinery (General)": 15.0,
+        "Furniture & Fittings": 10.0,
+        "Motor Cars (General Commercial)": 30.0,
+        "Motor Cars (Personal/General Use)": 15.0,
+        "Buildings (Commercial/Office)": 10.0,
+        "Buildings (Residential Staff Quarters)": 5.0,
+        "Intangible Assets (Patents, Copyrights)": 25.0
+      }
+    }
+  },
+  "compliance_calendar": {
+    "deadlines": [
+      {
+        "title": "GST GSTR-1 Filing",
+        "due_day": 11,
+        "periodicity": "Monthly",
+        "category": "GST",
+        "description": "Details of outward supplies of goods or services. Due on the 11th of the succeeding month.",
+        "required_documents": ["Sales Invoice Register", "Credit/Debit Notes issued"]
+      },
+      {
+        "title": "GST GSTR-3B Filing",
+        "due_day": 20,
+        "periodicity": "Monthly",
+        "category": "GST",
+        "description": "Monthly summary return and payment of tax. Due on the 20th of the succeeding month.",
+        "required_documents": ["GSTR-1 data", "GSTR-2B matching statement for Input Tax Credit"]
+      },
+      {
+        "title": "TDS Payment Deposit",
+        "due_day": 7,
+        "periodicity": "Monthly",
+        "category": "TDS",
+        "description": "Monthly deposit of Tax Deducted at Source (TDS) for salaries, contractor fees, rent, etc. Due by the 7th of the succeeding month.",
+        "required_documents": ["TDS Ledger", "Vendor payments sheet"]
+      },
+      {
+        "title": "Advance Tax Installment 1",
+        "due_date": "06-15",
+        "periodicity": "Quarterly",
+        "category": "Income Tax",
+        "description": "Payment of 15% of estimated tax liability for the financial year.",
+        "required_documents": ["Estimated Profit & Loss Statement"]
+      },
+      {
+        "title": "Advance Tax Installment 2",
+        "due_date": "09-15",
+        "periodicity": "Quarterly",
+        "category": "Income Tax",
+        "description": "Payment of 45% of estimated tax liability for the financial year.",
+        "required_documents": ["Estimated Profit & Loss Statement"]
+      },
+      {
+        "title": "Advance Tax Installment 3",
+        "due_date": "12-15",
+        "periodicity": "Quarterly",
+        "category": "Income Tax",
+        "description": "Payment of 75% of estimated tax liability for the financial year.",
+        "required_documents": ["Estimated Profit & Loss Statement"]
+      },
+      {
+        "title": "Advance Tax Installment 4",
+        "due_date": "03-15",
+        "periodicity": "Quarterly",
+        "category": "Income Tax",
+        "description": "Payment of 100% of estimated tax liability for the financial year.",
+        "required_documents": ["Estimated Profit & Loss Statement"]
+      }
+    ]
+  }
+}

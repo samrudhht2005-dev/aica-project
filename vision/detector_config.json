@@ -1,0 +1,14 @@
+{
+  "model_path": "vision/weights/aica_product_detector.pt",
+  "fallback_legacy_path": "vision/best.pt",
+  "use_legacy_synthetic_model": false,
+  "imgsz": 416,
+  "confidence_threshold": 0.55,
+  "iou_threshold": 0.45,
+  "max_detections": 10,
+  "require_user_confirm": true,
+  "notes": {
+    "confidence_threshold": "Starting threshold for POS acceptance. Tune after real validation; model confidence is not accuracy.",
+    "use_legacy_synthetic_model": "vision/best.pt was trained 1 epoch on synthetic coloured boxes — do not use for real POS."
+  }
+}

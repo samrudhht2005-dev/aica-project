@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - Organization settings</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+</head>
+
+<body>
+{% from "macros.html" import ca_tip, field_explain, page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.orgTitle">Organization Settings</h1>
+            <p class="hero-subtitle" data-i18n="pages.orgSub">Legal identity used for GST, income tax, and every report on this site</p>
+        </div>
+    </div>
+
+    {{ page_intro("Why profile matters", "PAN, GSTIN, state, entity type and tax regime decide which rates and filings apply. Changing them here recalculates Income Tax and the planning cards. This is the company master a CA would keep in Form 3CD / GST REG-01.") }}
+
+    <div class="modern-card">
+        <h4 class="card-heading"><i class="bi bi-building"></i> Company profile</h4>
+        
+        <form action="/api/organization" method="POST">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    {{ field_explain("Legal name of business", "Legal name", "Name on PAN / Certificate of Incorporation. Must match GSTIN and bank account for ITC and refunds.") }}
+                    <input type="text" name="name" class="form-control modern-input" value="{{ org.name if org else '' }}" required>
+                </div>
+                <div class="col-md-6">
+                    {{ field_explain("Business entity type", "Entity type", "Private Ltd, LLP, partnership or proprietor. Corporate tax rates and ITR form depend on this.") }}
+                    <select name="business_type" class="form-select modern-input">
+                        <option value="Private Ltd" {% if org and org.business_type == 'Private Ltd' %}selected{% endif %}>Private Ltd Company</option>
+                        <option value="Sole Proprietor" {% if org and org.business_type == 'Sole Proprietor' %}selected{% endif %}>Sole Proprietor</option>
+                        <option value="LLP" {% if org and org.business_type == 'LLP' %}selected{% endif %}>Limited Liability Partnership (LLP)</option>
+                        <option value="Partnership" {% if org and org.business_type == 'Partnership' %}selected{% endif %}>Partnership Firm</option>
+                    </select>
+                </div>
+                
+                <div class="col-md-4">
+                    {{ field_explain("Industry", "Industry", "Used for GST HSN hints and 80JJAA day-count rules (apparel/leather get 150 days instead of 240).") }}
+                    <input type="text" name="industry" class="form-control modern-input" value="{{ org.industry if org else 'Retail' }}" required>
+                </div>
+                <div class="col-md-4">
+                    {{ field_explain("PAN", "PAN", "10-character tax ID. Mandatory for TDS, ITR and GST registration.") }}
+                    <input type="text" name="pan" class="form-control modern-input" placeholder="e.g. AAACA1234B" value="{{ org.pan if org else '' }}">
+                </div>
+                <div class="col-md-4">
+                    {{ field_explain("GSTIN", "GSTIN", "15-character GST number. First two digits are the state code. Needed to claim ITC and file GSTR-1 / 3B.") }}
+                    <input type="text" name="gstin" class="form-control modern-input" placeholder="e.g. 29AAACA1234B1Z1" value="{{ org.gstin if org else '' }}">
+                </div>
+                <div class="col-md-4">
+                    {{ field_explain("GST registered", "GST registration", "If not registered, expense GST is not applied. Turn this on when you have a GSTIN.") }}
+                    <select name="gst_registered" class="form-select modern-input">
+                        <option value="false" {% if org and not org.gst_registered %}selected{% endif %}>Not registered</option>
+                        <option value="true" {% if org and org.gst_registered %}selected{% endif %}>Registered</option>
+                    </select>
+                </div>
+
+                <div class="col-12">
+                    {{ field_explain("Registered office address", "Address", "Principal place of business on GST REG-01. Notices and e-way bills use this.") }}
+                    <input type="text" name="registered_address" class="form-control modern-input" value="{{ org.registered_address if org else '' }}">
+                </div>
+
+                <div class="col-md-4">
+                    {{ field_explain("State", "State", "GST is destination-based. State decides SGST vs IGST on purchases and which GST officer you file with.") }}
+                    <input type="text" name="state" class="form-control modern-input" value="{{ org.state if org else 'Karnataka' }}">
+                </div>
+                <div class="col-md-4">
+                    {{ field_explain("Financial year", "Financial year", "India FY runs 1 April–31 March (e.g. 2026-27). 80JJAA and depreciation are computed for this year.") }}
+                    <input type="text" name="financial_year" class="form-control modern-input" value="{{ org.financial_year if org else '2026-27' }}">
+                </div>
+                <div class="col-md-4">
+                    {{ field_explain("GST return period", "Return period", "Monthly GSTR-3B is default. Quarterly is only if you opted QRMP (turnover typically under ₹5 crore).") }}
+                    <select name="accounting_period" class="form-select modern-input">
+                        <option value="Monthly" {% if org and org.accounting_period == 'Monthly' %}selected{% endif %}>Monthly</option>
+                        <option value="Quarterly" {% if org and org.accounting_period == 'Quarterly' %}selected{% endif %}>Quarterly</option>
+                        <option value="Annual" {% if org and org.accounting_period == 'Annual' %}selected{% endif %}>Annual</option>
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    {{ field_explain("Income-tax regime", "Tax regime", "Old regime: 25% for most domestic companies under ₹400 cr, with deductions. 115BAA: 22% + 10% surcharge + 4% cess (effective 25.17%), fewer incentives. Once 115BAA is opted, you generally cannot go back.") }}
+                    <select name="tax_regime" class="form-select modern-input">
+                        <option value="Regular (Old Regime)" {% if org and org.tax_regime == 'Regular (Old Regime)' %}selected{% endif %}>Regular (Old corporate regime with deductions)</option>
+                        <option value="Section 115BAA" {% if org and org.tax_regime == 'Section 115BAA' %}selected{% endif %}>Section 115BAA Concessional (22% flat rate)</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    {{ field_explain("Organisation size", "Size", "MSME classification (Micro/Small/Medium) can affect delayed-payment rules and some schemes. It does not by itself change GST rates.") }}
+                    <select name="organization_size" class="form-select modern-input">
+                        <option value="Micro" {% if org and org.organization_size == 'Micro' %}selected{% endif %}>Micro</option>
+                        <option value="Small" {% if org and org.organization_size == 'Small' %}selected{% endif %}>Small</option>
+                        <option value="Medium" {% if org and org.organization_size == 'Medium' %}selected{% endif %}>Medium</option>
+                        <option value="Large" {% if org and org.organization_size == 'Large' %}selected{% endif %}>Large</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    {{ field_explain("Declared turnover", "Turnover", "Your expected annual turnover. Used as a planning input; live sales still come from POS bills.") }}
+                    <input type="number" step="any" name="business_turnover" class="form-control modern-input" value="{{ org.business_turnover if org else 0 }}">
+                </div>
+
+                <div class="col-md-6">
+                    {{ field_explain("Headcount (reference)", "Headcount", "Shown from this form; the live payroll page count is what 80JJAA uses. Keep them aligned.") }}
+                    <input type="number" name="employees_count" class="form-control modern-input" value="{{ org.employees_count if org else 0 }}">
+                </div>
+                <div class="col-md-6">
+                    {{ field_explain("Bank accounts", "Bank accounts", "Current accounts used for business. Mixing personal accounts makes drawings and ITC tracing painful.") }}
+                    <input type="text" name="bank_accounts" class="form-control modern-input" value="{{ org.bank_accounts if org else '' }}">
+                </div>
+
+                <div class="col-md-6">
+                    {{ field_explain("Branches", "Branches", "Additional places of business. Extra GST registrations may be needed if they are in other states.") }}
+                    <input type="text" name="branches" class="form-control modern-input" value="{{ org.branches if org else '' }}">
+                </div>
+            </div>
+            
+            <button type="submit" class="btn modern-btn w-100 btn-sm mt-3"><i class="bi bi-save"></i> Save — refresh tax pages</button>
+        </form>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+
+</body>
+</html>
+

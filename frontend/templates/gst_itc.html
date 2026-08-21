@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - GST & Input Tax Credit</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .itc-badge {
+            font-size: 0.95rem;
+            padding: 8px 16px;
+            border-radius: 12px;
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import ca_tip, page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div>
+            <h1 class="hero-title" data-i18n="pages.gstTitle">GST & Input Tax Credit (ITC)</h1>
+            <p class="hero-subtitle">Live working from POS sales and expense invoices — not estimated splits</p>
+        </div>
+    </div>
+
+    {{ page_intro("What GST & ITC mean", "GST you collect on sales is output tax. GST you pay on eligible business purchases is Input Tax Credit (ITC) and reduces what you pay to the government. Personal bills and some categories (food, employee welfare, most cars) are blocked under Section 17(5). Net GST ≈ output − eligible ITC.") }}
+
+    <div class="card border-warning mb-4" class="aica-callout-warning" style="border-radius: var(--radius); padding: 24px; border: 1px solid var(--border);">
+        <h4 class="font-weight-bold" style="color: #b45309;"><i class="bi bi-lightning-charge-fill text-warning"></i> Current GST position</h4>
+        <div class="row g-4 text-center">
+            <div class="col-md-3 border-end">
+                <span class="small text-muted">Output GST (from sales)</span>
+                <h4 class="font-weight-bold mt-1 text-danger">₹{{ "{:,.2f}".format(output_gst) }}</h4>
+            </div>
+            <div class="col-md-3 border-end">
+                <span class="small text-muted">Eligible ITC {{ ca_tip("Eligible ITC", "Input GST on business invoices minus Section 17(5) blocked categories.") }}</span>
+                <h4 class="font-weight-bold mt-1 text-success">₹{{ "{:,.2f}".format(eligible_itc) }}</h4>
+            </div>
+            <div class="col-md-3 border-end">
+                <span class="small text-muted">Blocked ITC</span>
+                <h4 class="font-weight-bold mt-1 text-danger">₹{{ "{:,.2f}".format(blocked_itc) }}</h4>
+            </div>
+            <div class="col-md-3">
+                <span class="small text-muted">Net GST payable {{ ca_tip("Net GST", "Positive means you owe GST. Negative means credit to carry forward (after GSTR-2B match).") }}</span>
+                <h4 class="font-weight-bold mt-1">₹{{ "{:,.2f}".format(net_gst_payable) }}</h4>
+            </div>
+        </div>
+        <div class="alert alert-info mt-4 m-0" style="border-radius: 12px; font-size: 0.85rem;">
+            <i class="bi bi-info-circle-fill"></i> Gross GST on business invoices: ₹{{ "{:,.2f}".format(total_input_gst) }}. Personal spends ₹{{ "{:,.2f}".format(personal_expense_total) }} are excluded. Match invoices with GSTR-2B before claiming in GSTR-3B.
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-box-arrow-right text-danger"></i> Output GST by rate</h4>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>GST slab</th>
+                                <th>From products / bills</th>
+                                <th>Tax</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pct, data in output_gst_splits.items() %}
+                            <tr>
+                                <td>{{ pct }}%</td>
+                                <td class="small text-muted">{{ data.products|join(", ") if data.products else "—" }}</td>
+                                <td class="text-danger">₹{{ "{:,.2f}".format(data.amount) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" class="text-muted">No sales yet. POS checkout will fill this table.</td></tr>
+                            {% endfor %}
+                            <tr class="table-light font-weight-bold">
+                                <td>Total output GST</td>
+                                <td></td>
+                                <td class="text-danger">₹{{ "{:,.2f}".format(output_gst) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-shield-x text-warning"></i> Blocked credit (Sec 17(5))</h4>
+                <p class="small text-muted mb-3">These categories cannot be claimed as ITC even if GST was paid and the spend is for the business.</p>
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Category in your books</th>
+                                <th>Tax blocked</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat, amt in blocked_by_category.items() %}
+                            <tr>
+                                <td>{{ cat }}</td>
+                                <td class="text-danger">₹{{ "{:,.2f}".format(amt) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="2" class="text-muted">No blocked categories recorded yet.</td></tr>
+                            {% endfor %}
+                            <tr class="table-light font-weight-bold">
+                                <td>Total blocked</td>
+                                <td class="text-danger">₹{{ "{:,.2f}".format(blocked_itc) }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+
+</body>
+</html>

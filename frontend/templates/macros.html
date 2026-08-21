@@ -1,0 +1,21 @@
+{% macro ca_tip(title, body) %}
+<button type="button" class="ca-tip" data-bs-toggle="popover" data-bs-placement="top" data-bs-title="{{ title }}" data-bs-content="{{ body }}" aria-label="What this means">
+    <i class="bi bi-question-circle"></i>
+</button>
+{% endmacro %}
+
+{% macro field_explain(label, title, body, extra_class="") %}
+<label class="form-label small text-muted d-flex align-items-center gap-1 {{ extra_class }}">
+    {{ label }} {{ ca_tip(title, body) }}
+</label>
+{% endmacro %}
+
+{% macro page_intro(title, body) %}
+<div class="page-intro">
+    <div class="page-intro-icon"><i class="bi bi-info-circle-fill"></i></div>
+    <div>
+        <strong>{{ title }}</strong>
+        <p class="mb-0">{{ body }}</p>
+    </div>
+</div>
+{% endmacro %}

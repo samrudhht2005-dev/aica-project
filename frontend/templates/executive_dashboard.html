@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>AICA - Financial Intelligence Dashboard</title>
+
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Bootstrap and Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/theme.js?v=3"></script>
+    
+    <style>
+        .metric-card {
+            border-radius: 20px;
+            padding: 24px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+        .metric-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 24px rgba(0,0,0,0.04);
+        }
+        .metric-icon {
+            font-size: 28px;
+            padding: 12px;
+            border-radius: 16px;
+            width: 52px;
+            height: 52px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .bg-primary-light { background: rgba(79, 70, 229, 0.1); color: var(--primary); }
+        .bg-success-light { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .bg-danger-light { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .bg-warning-light { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        
+        .anomaly-alert {
+            border-left: 4px solid var(--danger);
+            background: var(--danger-soft, rgba(239, 68, 68, 0.08));
+            color: var(--text-main);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+{% from "macros.html" import ca_tip, page_intro %}
+{% include "partials/sidebar.html" %}
+
+<div class="main-content">
+
+    <div class="hero-card">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <h1 class="hero-title">Financial Intelligence Hub</h1>
+                <p class="hero-subtitle">
+                    Company: <strong>{{ org.name if org else "Unregistered Company" }}</strong> | State: {{ org.state if org else "KA" }} | PAN: {{ org.pan if org else "N/A" }}
+                </p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <span class="live-chip">Live books</span>
+                <a href="/organization" class="btn btn-light btn-sm" style="border-radius: 10px; font-weight: 600;"><i class="bi bi-gear-fill"></i> Profile settings</a>
+            </div>
+        </div>
+    </div>
+
+    {{ page_intro("What this dashboard is", "This is your live P&amp;L snapshot — the same picture a CA would open first. Sales come from POS bills, costs from business expenses plus this month’s payroll, and personal spends are kept out so they do not reduce taxable profit. Press any ? to see what a number means.") }}
+    {% if sales_total == 0 and expenses_total == 0 %}
+    <div class="page-intro mb-4" style="border-left-color: #10b981;">
+        <div class="page-intro-icon"><i class="bi bi-inbox"></i></div>
+        <div>
+            <strong>No financial data available yet</strong>
+            <p class="mb-0">Record a sale, expense, employee, or asset to start filling this dashboard.</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-4 col-sm-6">
+            <div class="metric-card d-flex align-items-center gap-3">
+                <div class="metric-icon bg-success-light"><i class="bi bi-cash-stack"></i></div>
+                <div>
+                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised (POS / sales). This is the starting point for GST output tax and income-tax profit.") }}</span>
+                    <h3 class="m-0 font-weight-bold">₹{{ "{:,.2f}".format(sales_total) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="metric-card d-flex align-items-center gap-3">
+                <div class="metric-icon bg-danger-light"><i class="bi bi-graph-down"></i></div>
+                <div>
+                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Operating costs {{ ca_tip("Operating costs", "Business expenses recorded in the ledger plus this month’s payroll. Personal / owner drawings are excluded.") }}</span>
+                    <h3 class="m-0 font-weight-bold">₹{{ "{:,.2f}".format(expenses_total) }}</h3>
+                    <div class="text-muted" style="font-size: 0.75rem;">Bills ₹{{ "{:,.2f}".format(business_expense_total) }} · Payroll ₹{{ "{:,.2f}".format(monthly_payroll) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="metric-card d-flex align-items-center gap-3">
+                <div class="metric-icon bg-primary-light"><i class="bi bi-wallet2"></i></div>
+                <div>
+                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Net operating profit {{ ca_tip("Profit", "Sales minus operating costs. Income tax is computed on this figure after depreciation and 80JJAA.") }}</span>
+                    <h3 class="m-0 font-weight-bold" style="color: {% if profit_total >= 0 %}#10b981{% else %}#ef4444{% endif %};">₹{{ "{:,.2f}".format(profit_total) }}</h3>
+                    {% if personal_expense_total %}
+                    <div class="text-muted" style="font-size: 0.75rem;">Personal (not in P&amp;L): ₹{{ "{:,.2f}".format(personal_expense_total) }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-6">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-percent text-primary"></i> GST Summary {{ ca_tip("GST in plain words", "Output tax is GST you collected on sales. Eligible ITC is GST you paid on business purchases that the law allows you to set off. Net payable is roughly output minus eligible ITC.") }}</h4>
+                <div class="row text-center mt-3">
+                    <div class="col-4 border-end">
+                        <span class="text-muted small">Output GST</span>
+                        <h4 class="mt-2 text-danger">₹{{ "{:,.2f}".format(output_gst) }}</h4>
+                    </div>
+                    <div class="col-4 border-end">
+                        <span class="text-muted small">Eligible ITC</span>
+                        <h4 class="mt-2 text-success">₹{{ "{:,.2f}".format(eligible_itc) }}</h4>
+                    </div>
+                    <div class="col-4">
+                        <span class="text-muted small">Net GST</span>
+                        <h4 class="mt-2">₹{{ "{:,.2f}".format(net_gst_payable) }}</h4>
+                    </div>
+                </div>
+                <p class="text-muted small mt-3 mb-0">Blocked (not claimable) ITC: ₹{{ "{:,.2f}".format(blocked_itc) }} · Gross input GST on bills: ₹{{ "{:,.2f}".format(input_gst) }}</p>
+                <div class="text-center mt-3">
+                    <a href="/gst" class="btn btn-outline-primary btn-sm w-100" style="border-radius: 10px;">Open GST working &gt;</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-calendar-check text-warning"></i> Compliance Status {{ ca_tip("Filings", "These are statutory due dates (GSTR-1, GSTR-3B, TDS, advance tax). Missing them attracts late fees and interest even if tax is nil.") }}</h4>
+                <div class="row text-center mt-3">
+                    <div class="col-6 border-end">
+                        <span class="text-muted small">Pending Filings</span>
+                        <h4 class="mt-2 text-warning">{{ compliance_pending }}</h4>
+                    </div>
+                    <div class="col-6">
+                        <span class="text-muted small">Overdue Deadlines</span>
+                        <h4 class="mt-2 text-danger">{{ compliance_overdue }}</h4>
+                    </div>
+                </div>
+                <div class="text-center mt-4">
+                    <a href="/compliance" class="btn btn-outline-warning btn-sm w-100" style="border-radius: 10px; color: #d97706; border-color: #f59e0b;">Filing calendar &gt;</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-md-7">
+            <div class="modern-card h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h4 class="card-heading m-0"><i class="bi bi-lightning-charge-fill text-warning"></i> Tax planning from your books</h4>
+                    <span class="badge bg-warning text-dark">{{ opportunities_count }} live</span>
+                </div>
+                <p class="text-muted small mb-4">Suggestions update as you add expenses, staff, assets, or change your company profile.</p>
+                
+                <div class="table-responsive">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Optimization Area</th>
+                                <th>Section</th>
+                                <th>Status</th>
+                                <th>Est. impact</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in recommendations %}
+                                <tr style="cursor: pointer;" onclick="location.href='/tax-optimization'">
+                                    <td><strong style="color: var(--primary);">{{ rec.title }}</strong></td>
+                                    <td>{{ rec.rule_section }}</td>
+                                    <td><span class="badge bg-success">{{ rec.severity }}</span></td>
+                                    <td><strong>₹{{ "{:,.2f}".format(rec.estimated_tax_impact) }}</strong></td>
+                                </tr>
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted">No suggestions yet. Add a business expense, employee, or asset.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-end">
+                    <a href="/tax-optimization" class="btn btn-link btn-sm font-weight-bold" style="text-decoration: none;">Full explanations &gt;</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-5">
+            <div class="modern-card h-100">
+                <h4 class="card-heading"><i class="bi bi-receipt text-primary"></i> Latest expenses</h4>
+                {% for exp in recent_expenses %}
+                    <div class="d-flex justify-content-between border-bottom py-2">
+                        <div>
+                            <strong>{{ exp.vendor }}</strong>
+                            <div class="text-muted small">{{ exp.category }} · {% if exp.is_business %}Business{% else %}Personal{% endif %}</div>
+                        </div>
+                        <div class="text-end">₹{{ "{:,.2f}".format(exp.total_amount) }}</div>
+                    </div>
+                {% else %}
+                    <p class="text-muted small mb-0">No expenses yet. Record one on the Expenses page — this list and GST/profit will move immediately.</p>
+                {% endfor %}
+                <a href="/expenses" class="btn btn-link btn-sm px-0 mt-2">Record / review expenses &gt;</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-12">
+            <div class="modern-card">
+                <h4 class="card-heading"><i class="bi bi-exclamation-triangle-fill text-danger"></i> Audit flags ({{ anomalies_count }})</h4>
+                {% for anomaly in recent_anomalies %}
+                    <div class="anomaly-alert">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong style="color: #ef4444;">{{ anomaly.severity }} Severity</strong>
+                            <span class="text-muted" style="font-size: 0.72rem;">{{ anomaly.created_at.strftime('%H:%M:%S') if anomaly.created_at else '' }}</span>
+                        </div>
+                        <div>{{ anomaly.reason }}</div>
+                        <div class="text-muted small mt-1">{{ anomaly.details }}</div>
+                    </div>
+                {% else %}
+                    <div class="text-center text-muted py-3">
+                        <i class="bi bi-shield-check" style="font-size: 2rem; color: var(--success);"></i>
+                        <p class="mt-2 mb-0">No anomalies in the current registers.</p>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/static/explain.js"></script>
+
+</body>
+</html>
