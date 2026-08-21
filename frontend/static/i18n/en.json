@@ -193,15 +193,20 @@
     "history": "Sales history"
   },
   "assistant": {
-    "placeholder": "Ask about this screen…",
+    "placeholder": "Ask IRA about this screen…",
     "listening": "Listening…",
     "thinking": "Thinking…",
     "speaking": "Speaking…",
     "micOff": "Voice",
-    "title": "AICA",
-    "context": "Assistant",
-    "close": "Close assistant",
-    "open": "Open AICA assistant",
+    "title": "IRA",
+    "tagline": "Intelligent Revenue Assistant",
+    "context": "Intelligent Revenue Assistant",
+    "close": "Close IRA",
+    "open": "Open IRA",
+    "imListening": "I'm listening.",
+    "didntCatch": "I didn't catch that — say Hey IRA again.",
+    "stillHere": "Still here — say Hey IRA when you're ready.",
+    "speechUnsupported": "Speech recognition is not supported in this browser. Try Chrome.",
     "theme": "Toggle theme",
     "language": "Language"
   }

@@ -47,7 +47,7 @@
         </div>
     </div>
 
-    {{ page_intro("How this tax working is built", "Start with sales from POS. Subtract business bills plus this month’s payroll (personal spends stay out). Then subtract Section 32 depreciation and Section 80JJAA. The remainder is taxable income. Old regime uses ~25% + 4% cess. 115BAA uses 22% + 10% surcharge + 4% cess.") }}
+    {{ page_intro("How this tax working is built", "Start with FY sales from POS. Subtract business bills plus annualised payroll (12 × current monthly payroll; personal spends stay out). Then subtract Section 32 depreciation and Section 80JJAA. The remainder is taxable income. Old regime uses ~25% + 4% cess. 115BAA uses 22% + 10% surcharge + 4% cess. All figures are absolute INR.") }}
 
     <div class="row g-3 mb-4">
         <div class="col-md-3"><div class="p-3 border rounded-4"><span class="text-muted small">Sales {{ ca_tip("Sales", "POS / invoice turnover.") }}</span><h5>₹{{ "{:,.2f}".format(sales_total) }}</h5></div></div>

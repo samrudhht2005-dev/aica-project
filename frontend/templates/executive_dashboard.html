@@ -95,8 +95,8 @@
             <div class="metric-card d-flex align-items-center gap-3">
                 <div class="metric-icon bg-success-light"><i class="bi bi-cash-stack"></i></div>
                 <div>
-                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised (POS / sales). This is the starting point for GST output tax and income-tax profit.") }}</span>
-                    <h3 class="m-0 font-weight-bold">₹{{ "{:,.2f}".format(sales_total) }}</h3>
+                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised this FY (POS / sales). Absolute INR — not lakhs. Starting point for GST output tax and income-tax profit.") }}</span>
+                    <h3 class="m-0 font-weight-bold money-neutral">{{ sales_total | inr }}</h3>
                 </div>
             </div>
         </div>
@@ -104,9 +104,9 @@
             <div class="metric-card d-flex align-items-center gap-3">
                 <div class="metric-icon bg-danger-light"><i class="bi bi-graph-down"></i></div>
                 <div>
-                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Operating costs {{ ca_tip("Operating costs", "Business expenses recorded in the ledger plus this month’s payroll. Personal / owner drawings are excluded.") }}</span>
-                    <h3 class="m-0 font-weight-bold">₹{{ "{:,.2f}".format(expenses_total) }}</h3>
-                    <div class="text-muted" style="font-size: 0.75rem;">Bills ₹{{ "{:,.2f}".format(business_expense_total) }} · Payroll ₹{{ "{:,.2f}".format(monthly_payroll) }}</div>
+                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Operating costs {{ ca_tip("Operating costs", "FY business expenses plus annualised payroll (12 × current monthly payroll). Personal / owner drawings are excluded. Absolute INR.") }}</span>
+                    <h3 class="m-0 font-weight-bold money-neutral">{{ expenses_total | inr }}</h3>
+                    <div class="text-muted" style="font-size: 0.75rem;">Bills {{ business_expense_total | inr }} · Monthly payroll {{ monthly_payroll | inr }}</div>
                 </div>
             </div>
         </div>
@@ -115,9 +115,9 @@
                 <div class="metric-icon bg-primary-light"><i class="bi bi-wallet2"></i></div>
                 <div>
                     <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Net operating profit {{ ca_tip("Profit", "Sales minus operating costs. Income tax is computed on this figure after depreciation and 80JJAA.") }}</span>
-                    <h3 class="m-0 font-weight-bold" style="color: {% if profit_total >= 0 %}#10b981{% else %}#ef4444{% endif %};">₹{{ "{:,.2f}".format(profit_total) }}</h3>
+                    <h3 class="m-0 font-weight-bold {% if profit_total >= 0 %}money-gain{% else %}money-owe{% endif %}">{{ profit_total | inr }}</h3>
                     {% if personal_expense_total %}
-                    <div class="text-muted" style="font-size: 0.75rem;">Personal (not in P&amp;L): ₹{{ "{:,.2f}".format(personal_expense_total) }}</div>
+                    <div class="text-muted" style="font-size: 0.75rem;">Personal (not in P&amp;L): {{ personal_expense_total | inr }}</div>
                     {% endif %}
                 </div>
             </div>
@@ -127,19 +127,19 @@
     <div class="row g-4 mb-4">
         <div class="col-md-6">
             <div class="modern-card h-100">
-                <h4 class="card-heading"><i class="bi bi-percent text-primary"></i> GST Summary {{ ca_tip("GST in plain words", "Output tax is GST you collected on sales. Eligible ITC is GST you paid on business purchases that the law allows you to set off. Net payable is roughly output minus eligible ITC.") }}</h4>
+                <h4 class="card-heading"><i class="bi bi-percent text-primary"></i> GST Summary {{ ca_tip("GST in plain words", "Output tax is GST you collected on sales (amount owed before ITC). Eligible ITC is GST you paid on business purchases you may set off. Net payable is output minus eligible ITC.") }}</h4>
                 <div class="row text-center mt-3">
                     <div class="col-4 border-end">
                         <span class="text-muted small">Output GST</span>
-                        <h4 class="mt-2 text-danger">₹{{ "{:,.2f}".format(output_gst) }}</h4>
+                        <h4 class="mt-2 money-owe">{{ output_gst | inr }}</h4>
                     </div>
                     <div class="col-4 border-end">
                         <span class="text-muted small">Eligible ITC</span>
-                        <h4 class="mt-2 text-success">₹{{ "{:,.2f}".format(eligible_itc) }}</h4>
+                        <h4 class="mt-2 money-gain">{{ eligible_itc | inr }}</h4>
                     </div>
                     <div class="col-4">
-                        <span class="text-muted small">Net GST</span>
-                        <h4 class="mt-2">₹{{ "{:,.2f}".format(net_gst_payable) }}</h4>
+                        <span class="text-muted small">Net GST {% if net_gst_payable >= 0 %}payable{% else %}credit{% endif %}</span>
+                        <h4 class="mt-2 {% if net_gst_payable >= 0 %}money-owe{% else %}money-gain{% endif %}">{{ net_gst_payable | inr }}</h4>
                     </div>
                 </div>
                 <p class="text-muted small mt-3 mb-0">Blocked (not claimable) ITC: ₹{{ "{:,.2f}".format(blocked_itc) }} · Gross input GST on bills: ₹{{ "{:,.2f}".format(input_gst) }}</p>

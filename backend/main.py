@@ -4,16 +4,38 @@ from fastapi.staticfiles import StaticFiles
 from backend.routes import router, init_camera, handle_vision_detection
 import backend.routes as routes
 from backend.auth import is_public_path, session_from_request
+from backend.runtime_paths import (
+    load_runtime_env, static_dir, templates_dir, APP_VERSION, is_frozen,
+)
 from database.db import SessionLocal
 from models.db_models import User, Organization
 
-app = FastAPI(title="AICA POS AI Billing System", version="2.0.0")
+# Load .env / AppData config before other modules that read env at import time
+load_runtime_env()
 
-# Mount Static Files from the reorganized path
-app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+app = FastAPI(title="AICA POS AI Billing System", version=APP_VERSION)
+
+# Mount Static Files — path resolved for web + PyInstaller desktop
+_static = static_dir()
+if _static.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 
 # Include Router endpoints
 app.include_router(router)
+
+
+@app.get("/health")
+def health():
+    """Desktop launcher readiness probe — public, no auth."""
+    from backend.runtime_paths import app_release_info
+    info = app_release_info()
+    return {
+        "ok": True,
+        "app": "AICA",
+        "version": info.get("version") or APP_VERSION,
+        "build": info.get("build"),
+        "desktop": is_frozen() or __import__("os").environ.get("AICA_DESKTOP") == "1",
+    }
 
 @app.middleware("http")
 async def require_authentication(request: Request, call_next):
@@ -128,9 +150,9 @@ def seed_database_products():
 
 @app.on_event("startup")
 def startup_event():
-    print("FastAPI starting up. Initializing camera stream services...")
+    print("FastAPI starting up. Camera/YOLO deferred until POS camera is used.")
     # Do not seed demo inventory globally — each organisation starts empty.
-    init_camera(handle_vision_detection)
+    # Do not init_camera here — it blocked desktop startup with OpenCV/YOLO imports.
 
 
 @app.on_event("shutdown")

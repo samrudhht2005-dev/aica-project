@@ -59,8 +59,8 @@
                 <h4 class="font-weight-bold mt-1 text-danger">₹{{ "{:,.2f}".format(blocked_itc) }}</h4>
             </div>
             <div class="col-md-3">
-                <span class="small text-muted">Net GST payable {{ ca_tip("Net GST", "Positive means you owe GST. Negative means credit to carry forward (after GSTR-2B match).") }}</span>
-                <h4 class="font-weight-bold mt-1">₹{{ "{:,.2f}".format(net_gst_payable) }}</h4>
+                <span class="small text-muted">Net GST {% if net_gst_payable >= 0 %}payable{% else %}credit{% endif %} {{ ca_tip("Net GST", "Positive means you owe GST. Negative means credit to carry forward (after GSTR-2B match). Absolute INR.") }}</span>
+                <h4 class="font-weight-bold mt-1 {% if net_gst_payable >= 0 %}money-owe{% else %}money-gain{% endif %}">{{ net_gst_payable | inr }}</h4>
             </div>
         </div>
         <div class="alert alert-info mt-4 m-0" style="border-radius: 12px; font-size: 0.85rem;">

@@ -27,11 +27,20 @@
             border: 1px solid var(--border-color);
         }
         .result-pill {
-            background: #f8fafc;
+            background: var(--surface-2);
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 12px;
             border: 1px solid var(--border-color);
+            color: var(--text);
+        }
+        .result-pill .text-muted,
+        .result-pill span.small {
+            color: var(--text-muted, var(--text-secondary)) !important;
+        }
+        .result-pill.bg-success-light {
+            background: rgba(34, 197, 94, 0.12) !important;
+            border-color: rgba(34, 197, 94, 0.35) !important;
         }
     </style>
 </head>

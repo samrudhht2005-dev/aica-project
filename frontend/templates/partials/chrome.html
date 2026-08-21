@@ -1,4 +1,4 @@
-{# Shared floating chrome: theme, language, FAB, assistant panel #}
+{# Shared floating chrome: theme, language, IRA assistant #}
 <button type="button" class="aica-theme-toggle" id="aicaThemeToggle" data-i18n-title="assistant.theme" data-i18n-aria="assistant.theme" title="Toggle theme" aria-label="Toggle theme">
     <i class="bi bi-moon-fill" id="aicaThemeIcon"></i>
 </button>
@@ -11,17 +11,32 @@
     </select>
 </div>
 
-<button type="button" class="aica-fab" id="aicaFab" data-i18n-title="assistant.open" data-i18n-aria="assistant.open" title="AICA assistant" aria-label="Open AICA assistant">
+{# IRA ambient layer — inactive until wake / voice #}
+<div id="iraOverlay" class="ira-overlay" hidden aria-hidden="true">
+    <div class="ira-halo" aria-hidden="true"></div>
+    <div class="ira-center" role="status" aria-live="polite">
+        <div class="ira-orb" id="iraOrb">
+            <span class="ira-orb-core"></span>
+            <span class="ira-orb-ring"></span>
+        </div>
+        <div class="ira-center-copy">
+            <div class="ira-name">IRA</div>
+            <div class="ira-status-text" id="iraStatusText">Listening…</div>
+        </div>
+    </div>
+</div>
+
+<button type="button" class="aica-fab" id="aicaFab" data-i18n-title="assistant.open" data-i18n-aria="assistant.open" title="Open IRA" aria-label="Open IRA — Intelligent Revenue Assistant" aria-expanded="false">
     <i class="bi bi-stars"></i>
 </button>
 
 <div class="aica-chat" id="aicaChat" hidden>
     <div class="aica-chat-head">
         <div>
-            <div class="aica-chat-title" data-i18n="assistant.title">AICA</div>
-            <div class="aica-chat-sub" id="aicaChatContext" data-i18n="assistant.context">Assistant</div>
+            <div class="aica-chat-title" data-i18n="assistant.title">IRA</div>
+            <div class="aica-chat-sub" id="aicaChatContext" data-i18n="assistant.tagline">Intelligent Revenue Assistant</div>
         </div>
-        <button type="button" class="aica-chat-close" id="aicaChatClose" data-i18n-aria="assistant.close" aria-label="Close assistant"><i class="bi bi-x-lg"></i></button>
+        <button type="button" class="aica-chat-close" id="aicaChatClose" data-i18n-aria="assistant.close" aria-label="Close IRA"><i class="bi bi-x-lg"></i></button>
     </div>
     <div class="aica-chat-body" id="aicaChatBody"></div>
     <div class="aica-chat-nav" id="aicaChatNav" hidden></div>
@@ -30,7 +45,7 @@
         <button type="button" class="aica-mic-btn" id="aicaMicBtn" data-i18n-aria="assistant.micOff" data-i18n-title="assistant.micOff" aria-label="Voice" title="Voice">
             <i class="bi bi-mic" id="aicaMicIcon"></i>
         </button>
-        <input type="text" id="aicaChatInput" placeholder="Ask about this screen…" autocomplete="off" data-i18n-placeholder="assistant.placeholder">
+        <input type="text" id="aicaChatInput" placeholder="Ask IRA about this screen…" autocomplete="off" data-i18n-placeholder="assistant.placeholder">
         <button type="submit" aria-label="Send"><i class="bi bi-arrow-up"></i></button>
     </form>
 </div>
@@ -41,7 +56,8 @@ window.AICA_PATH = {{ (request.url.path if request else '/') | tojson }};
 window.AICA_UI_MODE = {{ (ui_mode or 'org') | tojson }};
 window.AICA_LANG = {{ (preferred_language or 'en') | tojson }};
 </script>
+<script src="/static/money.js?v=1"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="/static/i18n.js?v=4"></script>
-<script src="/static/assistant.js?v=2"></script>
+<script src="/static/assistant.js?v=12"></script>
 <script src="/static/sidebar.js?v=3"></script>

@@ -8,7 +8,12 @@ from ultralytics import YOLO
 
 from vision.product_classes import PRODUCT_CLASSES, canonicalize_product_name
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+try:
+    from backend.runtime_paths import project_root
+    PROJECT_ROOT = project_root()
+except Exception:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 CONFIG_PATH = Path(__file__).resolve().parent / "detector_config.json"
 
 # Kept for backwards-compatible imports (Gemini product options, etc.)

@@ -72,8 +72,9 @@
                         <h4 class="font-weight-bold mt-1 text-white">{{ eligible_count }} Employees</h4>
                     </div>
                     <div class="col-6">
-                        <span class="small opacity-75">Est. Annual Tax Savings Impact</span>
-                        <h4 class="font-weight-bold mt-1 text-white">₹{{ "{:,.2f}".format(potential_deduction) }}</h4>
+                        <span class="small opacity-75">Est. 80JJAA deduction (not tax saving)</span>
+                        <h4 class="font-weight-bold mt-1 text-white">{{ potential_deduction | inr }}</h4>
+                        <div class="small opacity-75">Potential tax saving ≈ {{ (potential_deduction * 0.25) | inr }} at 25%</div>
                     </div>
                 </div>
             </div>

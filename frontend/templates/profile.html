@@ -41,6 +41,14 @@
         </form>
         <p class="text-muted small mt-3 mb-0">Password is never shown. Organisation GST and address are under Organisation settings.</p>
     </div>
+
+    <div class="modern-card mt-3" style="max-width: 560px;">
+        <h2 class="h6 mb-2">About AICA</h2>
+        <p class="mb-1"><strong>AICA</strong></p>
+        <p class="mb-1 text-muted small">Version {{ app_version or "1.0.1" }}</p>
+        {% if app_build %}<p class="mb-1 text-muted small">Build {{ app_build }}</p>{% endif %}
+        {% if app_channel %}<p class="mb-0 text-muted small">Channel {{ app_channel }}</p>{% endif %}
+    </div>
 </div>
 <script src="/static/explain.js"></script>
 </body>

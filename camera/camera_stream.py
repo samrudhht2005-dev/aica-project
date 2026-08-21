@@ -7,12 +7,13 @@ import cv2
 import numpy as np
 
 from vision.product_classes import PRODUCT_CLASSES
-from vision.yolo_inference import YOLOProductDetector
 
 
 class CameraStreamer:
     def __init__(self, detection_callback=None):
-        self.detector = YOLOProductDetector()
+        # YOLO/Ultralytics is heavy — load lazily on first camera power-ON (not at FastAPI startup).
+        self.detector = None
+        self._detector_lock = threading.Lock()
         self.detection_callback = detection_callback
 
         self.running = False
@@ -46,6 +47,20 @@ class CameraStreamer:
         self.scan_line_y = 80
         self.scan_dir = 1
 
+    def _ensure_detector(self):
+        """Load YOLO only when POS camera is first powered on."""
+        if self.detector is not None:
+            return self.detector
+        with self._detector_lock:
+            if self.detector is not None:
+                return self.detector
+            logging.info("Lazy-loading YOLO product detector (first camera use)...")
+            t0 = time.perf_counter()
+            from vision.yolo_inference import YOLOProductDetector
+            self.detector = YOLOProductDetector()
+            logging.info("YOLO product detector ready in %.2fs", time.perf_counter() - t0)
+            return self.detector
+
     def start(self):
         if self.running:
             return
@@ -70,7 +85,8 @@ class CameraStreamer:
             summary = dict(self.latest_summary)
             summary["detections"] = list(self.latest_summary.get("detections") or [])
             summary["accepted"] = list(self.latest_summary.get("accepted") or [])
-            summary["model_ready"] = bool(getattr(self.detector, "model_ready", False))
+            det = self.detector
+            summary["model_ready"] = bool(det and getattr(det, "model_ready", False))
             summary["auto_add_enabled"] = self.auto_add_enabled
             summary["camera_powered"] = self.camera_powered
             return summary
@@ -102,7 +118,21 @@ class CameraStreamer:
             print("Camera powered OFF — device released.")
             return True
 
-        # Power ON
+        # Power ON — load YOLO only now (keeps FastAPI/desktop startup fast)
+        try:
+            self._ensure_detector()
+        except Exception as e:
+            logging.exception("Failed to load YOLO detector")
+            self.camera_powered = False
+            self.camera_error = True
+            self._publish_summary({
+                "state": "error",
+                "message": f"Product detector failed to load: {e}",
+                "detections": [],
+                "accepted": [],
+            })
+            return False
+
         self.camera_powered = True
         self.camera_error = False
         if self.is_simulated:
@@ -244,8 +274,9 @@ class CameraStreamer:
                             self.set_camera_power(False)
                             continue
 
-                        detections = self.detector.detect(frame)
-                        summary = self.detector.summarize(detections)
+                        detector = self._ensure_detector()
+                        detections = detector.detect(frame)
+                        summary = detector.summarize(detections)
                         self._publish_summary(summary)
                         frame = self._draw_detections(frame, detections)
 

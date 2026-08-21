@@ -113,8 +113,9 @@
                     </select>
                 </div>
                 <div class="col-md-3">
-                    {{ field_explain("Declared turnover", "Turnover", "Your expected annual turnover. Used as a planning input; live sales still come from POS bills.") }}
-                    <input type="number" step="any" name="business_turnover" class="form-control modern-input" value="{{ org.business_turnover if org else 0 }}">
+                    {{ field_explain("Declared annual turnover (INR)", "Turnover", "Enter absolute Indian Rupees for the year (e.g. 160000 for ₹1,60,000). Do NOT enter lakhs as the number — 1.6 means ₹1.60, not ₹1.6 lakh. Live sales still come from POS bills.") }}
+                    <input type="number" step="0.01" name="business_turnover" class="form-control modern-input" value="{{ org.business_turnover if org else 0 }}" placeholder="e.g. 160000">
+                    <div class="form-text">Unit: absolute ₹ (INR). Example: sixteen lakh rupees → 1600000</div>
                 </div>
 
                 <div class="col-md-6">

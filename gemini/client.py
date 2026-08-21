@@ -3,64 +3,161 @@ import logging
 import json
 import re
 import time
+import concurrent.futures
 from datetime import datetime
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from backend.money import INR_UNIT_LOCK, sanitize_ai_amount, to_float
 
-load_dotenv()
+try:
+    from backend.runtime_paths import load_runtime_env
+    load_runtime_env()
+except Exception:
+    load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_NAME = "gemini-3.5-flash"
+MODEL_NAME = os.getenv("AICA_GEMINI_MODEL", "gemini-3.5-flash-lite")
+
+# Keep IRA/desktop responsive when Gemini is slow or quota-exhausted.
+GEMINI_REQUEST_TIMEOUT_S = float(os.getenv("AICA_GEMINI_TIMEOUT_S", "25"))
+GEMINI_MAX_RETRIES_PER_MODEL = int(os.getenv("AICA_GEMINI_RETRIES", "0"))
+GEMINI_MAX_MODELS = int(os.getenv("AICA_GEMINI_MAX_MODELS", "4"))
+# Google GenAI rejects HTTP deadlines under 10s.
+GEMINI_HTTP_TIMEOUT_MS = max(10000, int(float(os.getenv("AICA_GEMINI_HTTP_TIMEOUT_MS", "20000"))))
+IRA_UNAVAILABLE_MSG = "IRA is temporarily unavailable. Please try again later."
+IRA_QUOTA_MSG = (
+    "IRA hit Gemini API rate limits (free-tier quota). "
+    "Wait about a minute and try again, or check billing/quota at https://ai.dev/rate-limit."
+)
+
+# Prefer lite first when primary Flash free-tier buckets are exhausted.
+_FALLBACK_MODELS = (
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-flash-latest",
+)
 
 client = None
+
+
+def _build_client(api_key: str):
+    try:
+        return genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                timeout=GEMINI_HTTP_TIMEOUT_MS,
+                retry_options=types.HttpRetryOptions(attempts=1),
+            ),
+        )
+    except Exception:
+        return genai.Client(api_key=api_key)
+
+
 if GEMINI_API_KEY:
     try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
+        client = _build_client(GEMINI_API_KEY)
     except Exception as e:
         logging.error(f"Failed to initialize Gemini Client: {e}")
 
+
+class GeminiUnavailableError(Exception):
+    """Raised when Gemini cannot serve the request (quota, timeout, offline)."""
+
+
+def _is_quota_or_rate_limit(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__} {exc}".upper()
+    return any(
+        token in text
+        for token in ("429", "RESOURCE_EXHAUSTED", "RATE LIMIT", "QUOTA", "TOO MANY REQUESTS")
+    )
+
+
+def _is_model_missing(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__} {exc}".upper()
+    return "404" in text or "NOT_FOUND" in text or "NO LONGER AVAILABLE" in text
+
+
+def _call_generate_content(model, contents, config, timeout_s: float):
+    """Run SDK generate_content with a hard wall-clock timeout."""
+    def _invoke():
+        return client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config,
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_invoke)
+        try:
+            return fut.result(timeout=timeout_s)
+        except concurrent.futures.TimeoutError as te:
+            fut.cancel()
+            raise TimeoutError(f"Gemini request timed out after {timeout_s:.0f}s (model={model})") from te
+
+
 def generate_content_with_fallback(contents, config=None):
     """
-    Generate content with automatic fallback to stable Gemini models if the primary model fails.
+    Generate content with limited model fallbacks, per-call timeout, and short exponential backoff.
+    Does not retry indefinitely on quota errors.
     """
     global client
     if not client:
         api_key = os.getenv("GEMINI_API_KEY")
         if api_key:
             try:
-                from google import genai
-                client = genai.Client(api_key=api_key)
+                client = _build_client(api_key)
             except Exception as init_err:
                 logging.error(f"Failed to lazy-initialize Gemini Client: {init_err}")
         if not client:
-            raise ValueError("Gemini API Client is not initialized. Please verify your GEMINI_API_KEY in the environment/.env.")
+            raise ValueError(
+                "Gemini API Client is not initialized. Please verify your GEMINI_API_KEY in the environment/.env."
+            )
 
-    # We list the models starting with the user-selected/configured MODEL_NAME
     models = [MODEL_NAME]
-    
-    # Add other common stable/active models as fallbacks
-    fallbacks = ["gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-2.0-flash"]
-    for m in fallbacks:
+    for m in _FALLBACK_MODELS:
         if m not in models:
             models.append(m)
-            
+    models = models[:GEMINI_MAX_MODELS]
+
     last_err = None
+    saw_quota = False
+
     for model in models:
-        try:
-            logging.info(f"Attempting content generation using model: {model}")
-            response = client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=config
-            )
-            return response
-        except Exception as e:
-            last_err = e
-            logging.warning(f"Failed generate_content on model {model}: {e}. Retrying fallback...")
-            
-    if last_err:
-        raise last_err
+        for attempt in range(GEMINI_MAX_RETRIES_PER_MODEL + 1):
+            try:
+                logging.info("Attempting content generation using model: %s (attempt %s)", model, attempt + 1)
+                return _call_generate_content(model, contents, config, GEMINI_REQUEST_TIMEOUT_S)
+            except Exception as e:
+                last_err = e
+                quota = _is_quota_or_rate_limit(e)
+                timed_out = isinstance(e, TimeoutError) or "DEADLINE" in f"{e}".upper() or "504" in f"{e}"
+                missing = _is_model_missing(e)
+                if quota:
+                    saw_quota = True
+                logging.warning(
+                    "Failed generate_content on model %s: %s%s",
+                    model,
+                    e,
+                    " (quota/rate)" if quota else (
+                        " (missing)" if missing else (" (timeout)" if timed_out else "")
+                    ),
+                )
+                if missing:
+                    break
+                if quota:
+                    # Brief pause then try next model (different free-tier buckets).
+                    time.sleep(1.2)
+                    break
+                if timed_out:
+                    break
+                if attempt < GEMINI_MAX_RETRIES_PER_MODEL:
+                    time.sleep(min(2 ** attempt, 2))
+                    continue
+                break
+
+    raise GeminiUnavailableError(IRA_QUOTA_MSG if saw_quota else IRA_UNAVAILABLE_MSG) from last_err
 
 
 def query_gemini_assistant(question: str, get_db_schema_callback, run_db_query_callback, rag_rules: str = "", extra_system: str = "", history: list | None = None) -> str:
@@ -118,6 +215,9 @@ def query_gemini_assistant(question: str, get_db_schema_callback, run_db_query_c
             "Always use the schema tool first if you are unsure of tables or columns, and then run read-only SELECT queries to "
             "fetch facts, calculate metrics, and answer questions. Note: DO NOT perform SQL updates or inserts, only SELECT queries. "
             "Be professional, accurate, and concise. Return responses formatted in clean markdown.\n\n"
+            f"{INR_UNIT_LOCK}\n"
+            "Database numeric columns are already absolute INR. Never reinterpret them as lakhs/crores. "
+            "Tax liability is money owed (not a 'benefit'). Tax saving/credit/refund are separate concepts.\n\n"
         )
 
         if rag_rules:
@@ -194,9 +294,16 @@ def query_gemini_assistant(question: str, get_db_schema_callback, run_db_query_c
 
         return "I need a simpler question to finish that lookup. Please try again with a more specific request."
 
+    except GeminiUnavailableError:
+        return IRA_UNAVAILABLE_MSG
+    except TimeoutError:
+        return IRA_UNAVAILABLE_MSG
     except Exception as e:
+        if _is_quota_or_rate_limit(e):
+            logging.warning("Gemini assistant unavailable (quota/rate): %s", e)
+            return IRA_UNAVAILABLE_MSG
         logging.exception("Gemini assistant failed")
-        return "Sorry, I couldn't process that request right now. Please try again."
+        return IRA_UNAVAILABLE_MSG
 
 
 def classify_product_image(image_bytes: bytes) -> str:
@@ -273,17 +380,18 @@ def ocr_and_analyze_invoice(file_bytes: bytes, filename: str) -> dict:
         "- 'gstin': GSTIN of the vendor if present (string, e.g. 29AAAAA0000A1Z1)\n"
         "- 'invoice_number': invoice identification number (string)\n"
         "- 'invoice_date': date of invoice (string in YYYY-MM-DD format)\n"
-        "- 'taxable_value': total taxable value before taxes (float)\n"
-        "- 'cgst': CGST amount (float, default 0.0)\n"
-        "- 'sgst': SGST amount (float, default 0.0)\n"
-        "- 'igst': IGST amount (float, default 0.0)\n"
-        "- 'total_tax': total GST tax amount (float, default 0.0)\n"
-        "- 'total_amount': grand total invoice amount including tax (float)\n"
+        "- 'taxable_value': total taxable value before taxes as absolute INR float (not lakhs)\n"
+        "- 'cgst': CGST amount as absolute INR float\n"
+        "- 'sgst': SGST amount as absolute INR float\n"
+        "- 'igst': IGST amount as absolute INR float\n"
+        "- 'total_tax': total GST tax amount as absolute INR float\n"
+        "- 'total_amount': grand total including tax as absolute INR float\n"
         "- 'hsn_sac': HSN or SAC code if available (string)\n"
         "- 'description': brief product/service description (string)\n"
         "- 'anomalies': list of any identified anomalies or issues (e.g. missing GSTIN, suspicious amounts, mismatched totals) (list of strings)\n\n"
         "Constraints:\n"
-        "- Output ONLY valid raw JSON. Do not write markdown tags (like ```json) or any conversational text."
+        f"- {INR_UNIT_LOCK}\n"
+        "- Output ONLY valid raw JSON. Do not write markdown tags or conversational text."
     )
     
     try:
@@ -296,6 +404,9 @@ def ocr_and_analyze_invoice(file_bytes: bytes, filename: str) -> dict:
         text = response.text.strip()
         text = re.sub(r"^```json\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
+        for k in ("taxable_value", "cgst", "sgst", "igst", "total_tax", "total_amount"):
+            if k in data:
+                data[k] = sanitize_ai_amount(data.get(k, 0))
         return data
     except Exception as e:
         logging.error(f"Gemini Invoice OCR failed: {e}")
@@ -373,11 +484,19 @@ def generate_tax_recommendations(org_data: dict, financial_summary: dict, rules_
         "- 'rule_section': Specific Section/Rule Reference (string, e.g. Section 80JJAA, Section 32, Section 17(5) ITC)\n"
         "- 'eligibility_conditions': Conditions the organization must satisfy to claim it (string)\n"
         "- 'required_documents': Documents or evidence required to support the claim (string)\n"
-        "- 'estimated_tax_impact': Approximate potential tax savings or cash-flow impact in Rs (float)\n"
+        "- 'estimated_tax_impact': Approximate potential TAX SAVING in absolute INR rupees as a bare float "
+        "(e.g. 18000.00 for eighteen thousand rupees). NEVER lakhs/crores. NEVER call a tax liability a benefit.\n"
         "- 'confidence_level': Your confidence percentage (0-100) (float)\n"
         "- 'severity': 'Critical', 'High', 'Medium', or 'Low' (string)\n"
-        "- 'status': 'Potential eligibility' or 'Recommendation requiring verification' or 'Confirmed calculation' (string)\n\n"
+        "- 'status': 'Potential eligibility' or 'Recommendation requiring verification' or 'Confirmed calculation' (string)\n"
+        "- 'impact_type': One of tax_saving | tax_credit | risk_avoided | liability_delta (string)\n\n"
         "Constraints:\n"
+        f"- {INR_UNIT_LOCK}\n"
+        "- CRITICAL EXAMPLE: turnover 1670.80 means ₹1,670.80 (one thousand six hundred seventy rupees). "
+        "Writing '₹1,670.8 Lakhs' is WRONG and forbidden. estimated_tax_impact for that turnover cannot be crores.\n"
+        "- estimated_tax_impact must be a plausible tax SAVING in absolute INR, typically far below turnover. "
+        "If expenses are present in the financial summary, do not claim 'zero expenses'.\n"
+        "- status must NOT be 'Confirmed calculation' — use 'Requires Verification' or 'Potential eligibility'.\n"
         "- Output ONLY a valid JSON list. Do not include codeblocks or explanations outside the JSON."
     )
     
@@ -386,6 +505,10 @@ def generate_tax_recommendations(org_data: dict, financial_summary: dict, rules_
         text = response.text.strip()
         text = re.sub(r"^```json\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
+        if isinstance(data, list):
+            for row in data:
+                if isinstance(row, dict) and "estimated_tax_impact" in row:
+                    row["estimated_tax_impact"] = sanitize_ai_amount(row.get("estimated_tax_impact", 0))
         return data
     except Exception as e:
         logging.error(f"Generate tax recommendations failed: {e}")
@@ -401,18 +524,21 @@ def simulate_what_if_scenario(scenario_type: str, params: dict, financial_summar
         f"Scenario Details / Parameters:\n{json.dumps(params, indent=2)}\n\n"
         f"Current Financial Summary:\n{json.dumps(financial_summary, indent=2)}\n\n"
         "Compute the changes and return a raw JSON object containing keys:\n"
-        "- 'salary_cost_change': Change in employee costs (float)\n"
-        "- 'asset_capital_cost': Change in asset capital cost (float)\n"
-        "- 'revenue_change': Change in revenue/sales (float)\n"
-        "- 'expense_change': Change in operating/other expenses (float)\n"
-        "- 'gst_impact': Expected change in net GST payable or ITC available (float)\n"
-        "- 'depreciation_deduction': Expected change in depreciation claim (float)\n"
-        "- 'profit_impact': Change in net profit (float)\n"
-        "- 'estimated_tax_impact': Estimated income tax liability impact (float)\n"
-        "- 'cash_flow_impact': Net cash flow impact (positive/negative) (float)\n"
+        "- 'salary_cost_change': Change in employee costs in absolute INR (float)\n"
+        "- 'asset_capital_cost': Change in asset capital cost in absolute INR (float)\n"
+        "- 'revenue_change': Change in revenue/sales in absolute INR (float)\n"
+        "- 'expense_change': Change in operating/other expenses in absolute INR (float)\n"
+        "- 'gst_impact': Change in net GST payable (positive = more payable) in absolute INR (float)\n"
+        "- 'depreciation_deduction': Change in depreciation claim in absolute INR (float)\n"
+        "- 'profit_impact': Change in net profit in absolute INR (float)\n"
+        "- 'estimated_tax_impact': Change in estimated income-tax LIABILITY in absolute INR "
+        "(positive = higher liability). Do NOT label this as a benefit.\n"
+        "- 'cash_flow_impact': Net cash flow impact in absolute INR (float)\n"
         "- 'eligible_incentives': Text list of potential deductions triggered (e.g. Section 80JJAA) (string)\n"
-        "- 'ai_narrative': A professional explanation summarizing the operational, profit, tax, and cash flow implications (string)\n\n"
+        "- 'ai_narrative': Professional explanation. When mentioning money, use absolute INR "
+        "(e.g. ₹1,607.80). Never write '₹1,607.80 lakh'.\n\n"
         "Constraints:\n"
+        f"- {INR_UNIT_LOCK}\n"
         "- Output ONLY raw JSON without formatting or markdown code blocks."
     )
     
@@ -421,6 +547,14 @@ def simulate_what_if_scenario(scenario_type: str, params: dict, financial_summar
         text = response.text.strip()
         text = re.sub(r"^```json\s*|\s*```$", "", text, flags=re.MULTILINE).strip()
         data = json.loads(text)
+        money_keys = (
+            "salary_cost_change", "asset_capital_cost", "revenue_change", "expense_change",
+            "gst_impact", "depreciation_deduction", "profit_impact", "estimated_tax_impact",
+            "cash_flow_impact",
+        )
+        for k in money_keys:
+            if k in data:
+                data[k] = sanitize_ai_amount(data.get(k, 0))
         return data
     except Exception as e:
         logging.error(f"What-if simulation failed: {e}")
@@ -448,14 +582,14 @@ def generate_forecasting_data(historical_data: dict) -> dict:
         f"{json.dumps(historical_data, indent=2)}\n\n"
         "Project financial trends for the next 12 months. Return a raw JSON object containing:\n"
         "- 'months': List of next 12 month names (list of strings, e.g. ['Jan', 'Feb', ...])\n"
-        "- 'revenue_actual_vs_forecast': List of 12 values representing forecasted revenue (list of floats)\n"
-        "- 'expenses_actual_vs_forecast': List of 12 values representing forecasted expenses (list of floats)\n"
-        "- 'profit_actual_vs_forecast': List of 12 values representing forecasted profit (list of floats)\n"
-        "- 'tax_actual_vs_forecast': List of 12 values representing forecasted tax liability (list of floats)\n"
-        "- 'cashflow_actual_vs_forecast': List of 12 values representing forecasted net cash flow (list of floats)\n"
-        "- 'insights': List of 3-4 professional financial forecasting takeaways (list of strings)\n\n"
-        "Constraints:\n"
-        "- Output ONLY raw JSON."
+        "- 'revenue_actual_vs_forecast': List of 12 forecasted revenue values in absolute INR (floats)\n"
+        "- 'expenses_actual_vs_forecast': List of 12 forecasted expense values in absolute INR (floats)\n"
+        "- 'profit_actual_vs_forecast': List of 12 forecasted profit values in absolute INR (floats)\n"
+        "- 'tax_actual_vs_forecast': List of 12 forecasted tax LIABILITY values in absolute INR (floats)\n"
+        "- 'cashflow_actual_vs_forecast': List of 12 forecasted cash-flow values in absolute INR (floats)\n"
+        "- 'insights': Short bullet insights (list of strings). Money in prose must stay absolute INR — never 'lakh' as the unit of an already-rupee number.\n\n"
+        f"Constraints:\n- {INR_UNIT_LOCK}\n"
+        "- Output ONLY raw JSON without markdown."
     )
     
     try:

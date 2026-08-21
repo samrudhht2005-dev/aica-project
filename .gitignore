@@ -15,6 +15,11 @@ __pycache__/
 dist/
 build/
 *.egg
+
+# --- Desktop packaging artifacts ---
+desktop/packaging/Output/
+*.spec.bak
+AICA_Setup_*.exe
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -68,3 +73,9 @@ vision/best.pt
 
 # --- Local scratch / one-off test helpers (optional; keep if you want them) ---
 # _test_*.py are useful regression scripts — left tracked unless you prefer otherwise
+
+# --- Bytecode / local desktop caches ---
+**/__pycache__/
+*.pyc
+desktop/**/__pycache__/
+

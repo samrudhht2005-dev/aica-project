@@ -26,8 +26,12 @@ def _secret_key() -> str:
     env_key = os.environ.get("AICA_SECRET_KEY")
     if env_key:
         return env_key
-    secret_path = os.path.join(os.path.dirname(__file__), "..", "database", ".session_secret")
-    secret_path = os.path.abspath(secret_path)
+    try:
+        from backend.runtime_paths import session_secret_path
+        secret_path = str(session_secret_path())
+    except Exception:
+        secret_path = os.path.join(os.path.dirname(__file__), "..", "database", ".session_secret")
+        secret_path = os.path.abspath(secret_path)
     if os.path.exists(secret_path):
         with open(secret_path, "r", encoding="utf-8") as f:
             key = f.read().strip()
@@ -107,15 +111,18 @@ def read_session_token(token: str, max_age: int = REMEMBER_MAX_AGE) -> Optional[
 
 def set_session_cookie(response: Response, user_id: int, org_id: int, remember: bool):
     token = create_session_token(user_id, org_id, remember)
-    max_age = REMEMBER_MAX_AGE if remember else SESSION_MAX_AGE
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=token,
-        httponly=True,
-        samesite="lax",
-        max_age=max_age,
-        path="/",
-    )
+    # Remember Me: persistent cookie (30 days).
+    # Without Remember Me: session cookie (no max_age) so WebView2 clears it when the app exits.
+    kwargs = {
+        "key": SESSION_COOKIE,
+        "value": token,
+        "httponly": True,
+        "samesite": "lax",
+        "path": "/",
+    }
+    if remember:
+        kwargs["max_age"] = REMEMBER_MAX_AGE
+    response.set_cookie(**kwargs)
 
 
 def clear_session_cookie(response: Response):
@@ -154,6 +161,8 @@ def session_from_request(request: Request) -> dict | None:
 
 def is_public_path(path: str) -> bool:
     if path.startswith("/static"):
+        return True
+    if path == "/health" or path.startswith("/health"):
         return True
     public = {"/login", "/signup", "/logout", "/favicon.ico"}
     return path in public or path.startswith("/login") or path.startswith("/signup")

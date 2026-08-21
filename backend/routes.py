@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request, Form, Response, Depends, UploadFile, Fil
 from fastapi.responses import RedirectResponse, StreamingResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from sqlalchemy import func, text
+from sqlalchemy import func, text, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,13 +28,26 @@ from backend.auth import (
 from gemini.client import (
     query_gemini_assistant, client, MODEL_NAME, generate_content_with_fallback,
     ocr_and_analyze_invoice, classify_expense_ai, generate_tax_recommendations,
-    simulate_what_if_scenario, generate_forecasting_data, detect_financial_anomalies
+    simulate_what_if_scenario, generate_forecasting_data, detect_financial_anomalies,
+    IRA_UNAVAILABLE_MSG,
 )
+from backend.optimization_actions import enrich_recommendation
+from backend.optimization_sanitize import (
+    scrub_optimization_recommendations,
+    validate_ai_recommendation_payload,
+    optimization_debug_snapshot,
+)
+from backend.money import (
+    money_round, to_float, format_inr, sanitize_ai_amount, money_dict,
+    structured_finance_block, INR_UNIT_LOCK, D,
+)
+from backend.runtime_paths import templates_dir, tax_rules_path, APP_VERSION
 
 router = APIRouter()
-templates = Jinja2Templates(directory="frontend/templates")
+templates = Jinja2Templates(directory=str(templates_dir()))
+templates.env.filters["inr"] = lambda v: format_inr(v)
 
-# Global camera streamer reference
+# Global camera streamer reference — created lazily on first camera API use (not at FastAPI startup).
 streamer = None
 
 def init_camera(detection_callback):
@@ -42,6 +55,14 @@ def init_camera(detection_callback):
     from camera.camera_stream import CameraStreamer
     streamer = CameraStreamer(detection_callback=detection_callback)
     streamer.start()
+
+
+def ensure_camera():
+    """Start camera streamer thread if needed (YOLO still deferred until power-ON)."""
+    global streamer
+    if streamer is None:
+        init_camera(handle_vision_detection)
+    return streamer
 
 # Active SSE listener queues: (asyncio.Queue, event_loop, org_id)
 active_queues: List[Tuple[asyncio.Queue, asyncio.AbstractEventLoop, int]] = []
@@ -162,7 +183,7 @@ def get_financial_snapshot(db: Session, org: Organization = None, request: Reque
     if org is None and request is not None:
         _, org = current_user_org(request, db)
     if not org:
-        return {
+        empty = {
             "org": None,
             "fy_start": datetime(2026, 4, 1),
             "fy_end": datetime(2027, 3, 31),
@@ -174,61 +195,86 @@ def get_financial_snapshot(db: Session, org: Organization = None, request: Reque
             "eligible_itc": 0, "net_gst_payable": 0, "eligible_count": 0, "eligible_80jjaa": 0,
             "total_depreciation": 0, "assets_cost": 0, "taxable_old": 0, "total_tax_old": 0,
             "taxable_new": 0, "total_tax_new": 0, "expense_by_category": {}, "output_gst_splits": {},
+            "currency": "INR",
+            "money_unit": "absolute_INR",
+            "declared_turnover_inr": 0,
         }
+        empty["finance"] = structured_finance_block(empty)
+        return empty
+
     fy_start, fy_end, fy_start_year = fy_bounds(org)
     oid = org.id
 
-    txs = db.query(Transaction).filter(Transaction.org_id == oid).all()
-    sales_total = sum(t.total_amount or 0 for t in txs)
-    output_gst = sum(t.gst_amount or 0 for t in txs)
+    def _in_fy(dt):
+        if dt is None:
+            return True
+        try:
+            return fy_start <= dt <= fy_end
+        except TypeError:
+            return True
 
-    exps = db.query(Expense).filter(Expense.org_id == oid).all()
+    all_txs = db.query(Transaction).filter(Transaction.org_id == oid).all()
+    txs = [t for t in all_txs if _in_fy(getattr(t, "created_at", None))]
+    sales_total = to_float(sum((D(t.total_amount) for t in txs), D("0")))
+    output_gst = to_float(sum((D(t.gst_amount) for t in txs), D("0")))
+
+    all_exps = db.query(Expense).filter(Expense.org_id == oid).all()
+    exps = [e for e in all_exps if _in_fy(getattr(e, "date", None) or getattr(e, "created_at", None))]
     business_exps = [e for e in exps if e.is_business]
     personal_exps = [e for e in exps if not e.is_business]
-    business_expense_total = sum(e.total_amount or 0 for e in business_exps)
-    personal_expense_total = sum(e.total_amount or 0 for e in personal_exps)
+    business_expense_total = to_float(sum((D(e.total_amount) for e in business_exps), D("0")))
+    personal_expense_total = to_float(sum((D(e.total_amount) for e in personal_exps), D("0")))
 
     employees = db.query(Employee).filter(Employee.org_id == oid).all()
     active_employees = [e for e in employees if e.status == "Active"]
-    monthly_payroll = sum((emp.salary or 0) + (emp.employer_contribution or 0) + (emp.benefits or 0) for emp in active_employees)
-    annual_payroll = monthly_payroll * 12
+    monthly_payroll = to_float(sum(
+        (D(emp.salary) + D(emp.employer_contribution) + D(emp.benefits) for emp in active_employees),
+        D("0"),
+    ))
+    annual_payroll = to_float(D(monthly_payroll) * 12)
 
-    expenses_total = business_expense_total + monthly_payroll
-    profit_total = sales_total - expenses_total
+    # Absolute INR throughout. Tax working uses FY sales/expenses + annualised payroll.
+    expenses_total = to_float(D(business_expense_total) + D(annual_payroll))
+    profit_total = to_float(D(sales_total) - D(expenses_total))
 
-    input_gst_all = sum(e.total_tax or 0 for e in business_exps)
+    input_gst_all = to_float(sum((D(e.total_tax) for e in business_exps), D("0")))
     blocked_by_category = {}
     for e in business_exps:
         if e.category in BLOCKED_ITC_CATEGORIES:
-            blocked_by_category[e.category] = blocked_by_category.get(e.category, 0.0) + (e.total_tax or 0)
-    blocked_itc = sum(blocked_by_category.values())
-    eligible_itc = max(0.0, input_gst_all - blocked_itc)
-    net_gst_payable = output_gst - eligible_itc
+            blocked_by_category[e.category] = to_float(
+                D(blocked_by_category.get(e.category, 0)) + D(e.total_tax)
+            )
+    blocked_itc = to_float(sum((D(v) for v in blocked_by_category.values()), D("0")))
+    eligible_itc = to_float(max(D("0"), D(input_gst_all) - D(blocked_itc)))
+    net_gst_payable = to_float(D(output_gst) - D(eligible_itc))
 
     eligible_hires, eligible_80jjaa = compute_80jjaa(active_employees, fy_start, fy_end)
+    eligible_80jjaa = to_float(eligible_80jjaa)
 
     assets = db.query(Asset).filter(Asset.org_id == oid).all()
-    total_depreciation = 0.0
-    assets_cost = 0.0
+    total_depreciation = D("0")
+    assets_cost = D("0")
     for a in assets:
-        assets_cost += a.purchase_value or 0
-        total_depreciation += (a.purchase_value or 0) * ((a.depreciation_rate or 0) / 100.0)
+        assets_cost += D(a.purchase_value)
+        total_depreciation += D(a.purchase_value) * (D(a.depreciation_rate) / D("100"))
+    total_depreciation = to_float(total_depreciation)
+    assets_cost = to_float(assets_cost)
 
-    taxable_old = max(0.0, profit_total - eligible_80jjaa - total_depreciation)
-    tax_old = taxable_old * 0.25
-    total_tax_old = tax_old + (tax_old * 0.04)
+    taxable_old = to_float(max(D("0"), D(profit_total) - D(eligible_80jjaa) - D(total_depreciation)))
+    tax_old = D(taxable_old) * D("0.25")
+    total_tax_old = to_float(tax_old + (tax_old * D("0.04")))
 
-    taxable_new = max(0.0, profit_total - eligible_80jjaa - total_depreciation)
-    tax_new = taxable_new * 0.22
-    surcharge_new = tax_new * 0.10
-    total_tax_new = tax_new + surcharge_new + ((tax_new + surcharge_new) * 0.04)
+    taxable_new = to_float(max(D("0"), D(profit_total) - D(eligible_80jjaa) - D(total_depreciation)))
+    tax_new = D(taxable_new) * D("0.22")
+    surcharge_new = tax_new * D("0.10")
+    total_tax_new = to_float(tax_new + surcharge_new + ((tax_new + surcharge_new) * D("0.04")))
 
     expense_by_category = {}
     for e in business_exps:
         cat = e.category or "Uncategorised"
-        expense_by_category[cat] = expense_by_category.get(cat, 0.0) + (e.total_amount or 0)
+        expense_by_category[cat] = to_float(D(expense_by_category.get(cat, 0)) + D(e.total_amount))
 
-    return {
+    snap = {
         "org": org,
         "fy_start": fy_start,
         "fy_end": fy_end,
@@ -238,30 +284,35 @@ def get_financial_snapshot(db: Session, org: Organization = None, request: Reque
         "employees": employees,
         "active_employees": active_employees,
         "assets": assets,
-        "sales_total": round(sales_total, 2),
-        "business_expense_total": round(business_expense_total, 2),
-        "personal_expense_total": round(personal_expense_total, 2),
-        "monthly_payroll": round(monthly_payroll, 2),
-        "annual_payroll": round(annual_payroll, 2),
-        "expenses_total": round(expenses_total, 2),
-        "profit_total": round(profit_total, 2),
-        "output_gst": round(output_gst, 2),
-        "input_gst": round(input_gst_all, 2),
-        "blocked_itc": round(blocked_itc, 2),
-        "blocked_by_category": {k: round(v, 2) for k, v in blocked_by_category.items()},
-        "eligible_itc": round(eligible_itc, 2),
-        "net_gst_payable": round(net_gst_payable, 2),
+        "sales_total": sales_total,
+        "business_expense_total": business_expense_total,
+        "personal_expense_total": personal_expense_total,
+        "monthly_payroll": monthly_payroll,
+        "annual_payroll": annual_payroll,
+        "expenses_total": expenses_total,
+        "profit_total": profit_total,
+        "output_gst": output_gst,
+        "input_gst": input_gst_all,
+        "blocked_itc": blocked_itc,
+        "blocked_by_category": blocked_by_category,
+        "eligible_itc": eligible_itc,
+        "net_gst_payable": net_gst_payable,
         "eligible_count": len(eligible_hires),
-        "eligible_80jjaa": round(eligible_80jjaa, 2),
-        "total_depreciation": round(total_depreciation, 2),
-        "assets_cost": round(assets_cost, 2),
-        "taxable_old": round(taxable_old, 2),
-        "total_tax_old": round(total_tax_old, 2),
-        "taxable_new": round(taxable_new, 2),
-        "total_tax_new": round(total_tax_new, 2),
+        "eligible_80jjaa": eligible_80jjaa,
+        "total_depreciation": total_depreciation,
+        "assets_cost": assets_cost,
+        "taxable_old": taxable_old,
+        "total_tax_old": total_tax_old,
+        "taxable_new": taxable_new,
+        "total_tax_new": total_tax_new,
         "expense_by_category": expense_by_category,
         "output_gst_splits": gst_output_by_rate(txs),
+        "currency": "INR",
+        "money_unit": "absolute_INR",
+        "declared_turnover_inr": to_float(getattr(org, "business_turnover", 0) or 0),
     }
+    snap["finance"] = structured_finance_block(snap)
+    return snap
 
 def upsert_rule_based_recommendations(db: Session, snap: dict):
     org = snap.get("org")
@@ -277,43 +328,47 @@ def upsert_rule_based_recommendations(db: Session, snap: dict):
             "rule_section": "Sec 80JJAA",
             "eligibility_conditions": "New additional employees, emoluments ≤ ₹25,000/month, employed ≥ 240 days (150 in apparel/leather), and participating in a recognised PF scheme. Keep appointment letters, payroll, and EPF challans.",
             "required_documents": "Appointment letter, Form 12BA/payroll register, EPF contribution proof, increment/joining records",
-            "estimated_tax_impact": round(snap["eligible_80jjaa"] * 0.25, 2),
+            "estimated_tax_impact": to_float(D(snap["eligible_80jjaa"]) * D("0.25")),
+            "impact_type": "tax_saving",
             "confidence_level": 82.0,
             "severity": "High",
         })
     if snap["total_depreciation"] > 0:
         planned.append({
             "title": "Section 32 WDV depreciation on fixed assets",
-            "detected_item": f"Capital block worth ₹{snap['assets_cost']:,.2f}",
+            "detected_item": f"Capital block worth {format_inr(snap['assets_cost'])}",
             "reason": "Income-tax depreciation is a non-cash deduction. Claiming the correct WDV rate on each asset block lowers taxable income this year.",
             "rule_section": "Sec 32",
             "eligibility_conditions": "Asset must be owned and put to use for the business. Computers/software 40%, plant & machinery 15%, furniture 10%, buildings 10% (WDV).",
             "required_documents": "Purchase invoice, installation/put-to-use note, fixed asset register, GST invoice if ITC was claimed",
-            "estimated_tax_impact": round(snap["total_depreciation"] * 0.25, 2),
+            "estimated_tax_impact": to_float(D(snap["total_depreciation"]) * D("0.25")),
+            "impact_type": "tax_saving",
             "confidence_level": 90.0,
             "severity": "Medium",
         })
     if snap["eligible_itc"] > 0:
         planned.append({
             "title": "Claim eligible GST Input Tax Credit",
-            "detected_item": f"Business input GST ₹{snap['input_gst']:,.2f} (blocked ₹{snap['blocked_itc']:,.2f})",
+            "detected_item": f"Business input GST {format_inr(snap['input_gst'])} (blocked {format_inr(snap['blocked_itc'])})",
             "reason": "GST paid on eligible business purchases can be set off against GST you collect on sales (output tax). Personal spends and blocked categories cannot be claimed.",
             "rule_section": "GST Sec 16 / 17(5)",
             "eligibility_conditions": "Valid tax invoice, goods/services used for business, supplier has filed GSTR-1, you have filed GSTR-3B, and the credit is not blocked under Section 17(5).",
             "required_documents": "Tax invoices, GSTR-2B matching, e-way bills where applicable",
-            "estimated_tax_impact": snap["eligible_itc"],
+            "estimated_tax_impact": to_float(snap["eligible_itc"]),
+            "impact_type": "tax_credit",
             "confidence_level": 88.0,
             "severity": "High",
         })
     if snap["personal_expense_total"] > 0:
         planned.append({
             "title": "Keep personal spends out of the P&L",
-            "detected_item": f"Personal expenses of ₹{snap['personal_expense_total']:,.2f}",
+            "detected_item": f"Personal expenses of {format_inr(snap['personal_expense_total'])}",
             "reason": "Personal drawings or owner expenses are not business deductions and do not create ITC. Recording them as 'Personal' keeps your profit and GST figures honest.",
             "rule_section": "IT Act / GST Sec 16",
             "eligibility_conditions": "Only wholly and exclusively business expenditure is deductible. Mixed-use items need a reasonable split.",
             "required_documents": "Bank statements, owner current account / drawings ledger",
-            "estimated_tax_impact": round(snap["personal_expense_total"] * 0.25, 2),
+            "estimated_tax_impact": to_float(D(snap["personal_expense_total"]) * D("0.25")),
+            "impact_type": "risk_avoided",
             "confidence_level": 95.0,
             "severity": "Medium",
         })
@@ -323,12 +378,13 @@ def upsert_rule_based_recommendations(db: Session, snap: dict):
         cheaper = "Section 115BAA (22% + surcharge)" if new_tax < old_tax else "Regular old regime (25% + cess, with deductions)"
         planned.append({
             "title": "Compare corporate tax regimes before you lock in",
-            "detected_item": f"Old regime tax ₹{old_tax:,.2f} vs 115BAA ₹{new_tax:,.2f}",
+            "detected_item": f"Old regime tax {format_inr(old_tax)} vs 115BAA {format_inr(new_tax)}",
             "reason": f"On current books, {cheaper} appears lower. Regime choice is largely irreversible for companies under 115BAA — review deductions you would give up.",
             "rule_section": "Sec 115BAA",
             "eligibility_conditions": "115BAA disallows some incentives and additional depreciation; standard WDV and 80JJAA are still available. Once opted, you generally cannot go back.",
             "required_documents": "Form 10-IC (if opting 115BAA), computation of income under both regimes",
-            "estimated_tax_impact": round(abs(old_tax - new_tax), 2),
+            "estimated_tax_impact": to_float(abs(D(old_tax) - D(new_tax))),
+            "impact_type": "liability_delta",
             "confidence_level": 70.0,
             "severity": "Medium",
         })
@@ -450,7 +506,7 @@ def classify_gst(product_name: str) -> int:
     return 12  # Standard default rate
 
 def load_tax_rules() -> dict:
-    rules_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "database", "tax_rules.json"))
+    rules_path = str(tax_rules_path())
     if not os.path.exists(rules_path):
         return {}
     try:
@@ -574,8 +630,7 @@ def seed_compliance_calendar(db: Session, org: Organization):
         return
     if db.query(ComplianceObligation).filter(ComplianceObligation.org_id == org.id).count() > 0:
         return
-    rules_path = os.path.join(os.path.dirname(__file__), "..", "database", "tax_rules.json")
-    rules_path = os.path.abspath(rules_path)
+    rules_path = str(tax_rules_path())
     if not os.path.exists(rules_path):
         return
     with open(rules_path, "r") as f:
@@ -611,7 +666,7 @@ def seed_compliance_calendar(db: Session, org: Organization):
     db.commit()
 # Automated AI scanner for dashboard updates
 def update_ai_insights_and_recommendations(db: Session, org, sales_total, expenses_total, profit_total, input_gst, output_gst):
-    rules_path = r"c:\Users\Samrudh\Downloads\aica-project\database\tax_rules.json"
+    rules_path = str(tax_rules_path())
     rules_context = {}
     if os.path.exists(rules_path):
         try:
@@ -621,11 +676,14 @@ def update_ai_insights_and_recommendations(db: Session, org, sales_total, expens
             logging.error(f"Error loading tax rules for scan: {e}")
             
     financial_summary = {
-        "turnover": sales_total,
-        "expenses": expenses_total,
-        "profit": profit_total,
-        "input_gst": input_gst,
-        "output_gst": output_gst,
+        "currency": "INR",
+        "unit": "absolute_INR",
+        "unit_note": "All figures are absolute rupees. 1607.80 means INR 1607.80 — never lakhs.",
+        "turnover": to_float(sales_total),
+        "expenses": to_float(expenses_total),
+        "profit": to_float(profit_total),
+        "input_gst": to_float(input_gst),
+        "output_gst": to_float(output_gst),
         "assets_count": db.query(Asset).filter(Asset.org_id == org.id).count(),
         "employees_count": db.query(Employee).filter(Employee.org_id == org.id).count()
     }
@@ -637,30 +695,51 @@ def update_ai_insights_and_recommendations(db: Session, org, sales_total, expens
         "state": org.state,
         "tax_regime": org.tax_regime,
         "employees_count": org.employees_count,
-        "turnover": org.business_turnover
+        "declared_annual_turnover_inr": to_float(org.business_turnover or 0),
+        "declared_turnover_unit": "absolute_INR",
     }
     
     # 1. Keep live rule-based recs, then add AI extras that don't duplicate titles
     try:
+        # Pass absolute-INR snapshot facts so Gemini cannot invent scale
+        financial_summary["sales_total_absolute_inr"] = to_float(sales_total)
+        financial_summary["expenses_absolute_inr"] = to_float(expenses_total)
+        financial_summary["profit_absolute_inr"] = to_float(profit_total)
+        financial_summary["example"] = (
+            f"If turnover is {to_float(sales_total)}, display {format_inr(sales_total)}. "
+            f"Never write '{to_float(sales_total)} Lakhs'."
+        )
+        snap_for_gate = {
+            "sales_total": to_float(sales_total),
+            "business_expense_total": to_float(expenses_total),
+            "expenses_total": to_float(expenses_total),
+            "profit_total": to_float(profit_total),
+            "total_tax_old": to_float(max(0.0, to_float(profit_total) * 0.25 * 1.04)),
+            "total_tax_new": 0,
+            "eligible_itc": to_float(input_gst),
+        }
         recs = generate_tax_recommendations(org_data, financial_summary, rules_context)
         if recs:
             existing_titles = {r.title.lower() for r in db.query(TaxRecommendation).filter(TaxRecommendation.org_id == org.id).all()}
             for r in recs:
-                title = r.get("title", "Optimization Found")
+                cleaned = validate_ai_recommendation_payload(r, snap_for_gate)
+                if not cleaned:
+                    continue
+                title = cleaned.get("title", "Optimization Found")
                 if title.lower() in existing_titles:
                     continue
                 rec = TaxRecommendation(
                     org_id=org.id,
                     title=title,
-                    detected_item=r.get("detected_item", ""),
-                    reason=r.get("reason", ""),
-                    rule_section=r.get("rule_section", "N/A"),
-                    eligibility_conditions=r.get("eligibility_conditions", ""),
-                    required_documents=r.get("required_documents", ""),
-                    estimated_tax_impact=float(r.get("estimated_tax_impact", 0.0)),
-                    confidence_level=float(r.get("confidence_level", 90.0)),
-                    severity=r.get("severity", "Medium"),
-                    status=r.get("status", "Requires Verification")
+                    detected_item=cleaned.get("detected_item", ""),
+                    reason=cleaned.get("reason", ""),
+                    rule_section=cleaned.get("rule_section", "N/A"),
+                    eligibility_conditions=cleaned.get("eligibility_conditions", ""),
+                    required_documents=cleaned.get("required_documents", ""),
+                    estimated_tax_impact=sanitize_ai_amount(cleaned.get("estimated_tax_impact", 0.0)),
+                    confidence_level=float(cleaned.get("confidence_level", 70.0)),
+                    severity=cleaned.get("severity", "Medium"),
+                    status=cleaned.get("status", "Requires Verification"),
                 )
                 db.add(rec)
                 existing_titles.add(title.lower())
@@ -707,6 +786,7 @@ def update_ai_insights_and_recommendations_bg(org_id, sales_total, expenses_tota
 # ---------------- SSE CAMERA EVENTS ----------------
 @router.get("/camera/events")
 async def camera_events(request: Request):
+    ensure_camera()
     loop = asyncio.get_running_loop()
     queue = asyncio.Queue()
     org_id = getattr(request.state, "org_id", None)
@@ -734,6 +814,7 @@ async def camera_events(request: Request):
 # ---------------- CAMERA VIDEO FEED ----------------
 @router.get("/camera/video_feed")
 def video_feed():
+    ensure_camera()
     if streamer is None:
         return Response("Camera streamer is disabled or not initialized.", status_code=503)
         
@@ -750,6 +831,7 @@ def video_feed():
 # ---------------- CAMERA STATUS & CONTROL ----------------
 @router.get("/camera/status")
 def get_camera_status():
+    ensure_camera()
     if streamer is None:
         return {
             "active": False,
@@ -773,6 +855,7 @@ def get_camera_status():
 
 @router.post("/camera/power")
 def set_camera_power(enabled: str = Form("false")):
+    ensure_camera()
     if streamer is None:
         return {"success": False, "error": "Camera streamer not initialized"}
     ok = streamer.set_camera_power(parse_form_bool(enabled))
@@ -786,6 +869,7 @@ def set_camera_power(enabled: str = Form("false")):
 @router.get("/camera/detections")
 def get_camera_detections():
     """Latest honest detection summary for the POS UI (poll ~4–5 Hz)."""
+    ensure_camera()
     if streamer is None:
         return {
             "state": "offline",
@@ -799,6 +883,7 @@ def get_camera_detections():
 @router.post("/camera/auto_add")
 def set_camera_auto_add(enabled: str = Form("false")):
     """When false (default), user must confirm before a detection enters the cart."""
+    ensure_camera()
     if streamer is None:
         return {"success": False, "error": "Camera streamer not initialized"}
     streamer.set_auto_add(parse_form_bool(enabled))
@@ -843,6 +928,7 @@ def confirm_camera_product(
 
 @router.post("/camera/toggle_mode")
 def toggle_camera_mode(simulate: bool = Form(...)):
+    ensure_camera()
     if streamer is None:
         return {"success": False, "error": "Camera streamer not initialized"}
     success = streamer.set_simulation_mode(simulate)
@@ -854,6 +940,7 @@ def toggle_camera_mode(simulate: bool = Form(...)):
 
 @router.post("/camera/set_index")
 def set_camera_index(index: int = Form(...)):
+    ensure_camera()
     if streamer is None:
         return {"success": False, "error": "Camera streamer not initialized"}
     success = streamer.set_camera_index(index)
@@ -1719,8 +1806,7 @@ def summary(request: Request, db: Session = Depends(get_db)):
 
 def collect_rag_rules(question: str) -> str:
     rules_context = ""
-    rules_path = os.path.join(os.path.dirname(__file__), "..", "database", "tax_rules.json")
-    rules_path = os.path.abspath(rules_path)
+    rules_path = str(tax_rules_path())
     if not os.path.exists(rules_path):
         return ""
     try:
@@ -1755,7 +1841,7 @@ ASSISTANT_PAGES = {
     "assets": {"path": "/assets", "label": "Fixed Assets", "focus": "capitalisation and Section 32 depreciation"},
     "gst": {"path": "/gst", "label": "GST & ITC", "focus": "output tax, eligible ITC, blocked credits, net GST payable"},
     "income-tax": {"path": "/income-tax", "label": "Income Tax", "focus": "taxable profit and old vs new regime estimates"},
-    "tax-optimization": {"path": "/tax-optimization", "label": "AI Optimization", "focus": "rule-based tax opportunities from the books"},
+    "tax-optimization": {"path": "/tax-optimization", "label": "AI Optimization", "focus": "actionable tax and GST opportunities from the books, documents needed, next steps, and related AICA modules"},
     "compliance": {"path": "/compliance", "label": "Compliance", "focus": "return due dates and filing calendar"},
     "forecasting": {"path": "/forecasting", "label": "Forecasting", "focus": "forward-looking sales and expense trends"},
     "what-if": {"path": "/what-if", "label": "What-If Simulator", "focus": "scenario modelling"},
@@ -1818,6 +1904,7 @@ def assistant_api(
     path: str = Form("/"),
     task: str = Form(""),
     history: str = Form("[]"),
+    opt_context: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user, org = current_user_org(request, db)
@@ -1833,13 +1920,18 @@ def assistant_api(
         history_list = []
 
     extra = (
+        "You are IRA (Intelligent Revenue Assistant), the voice and chat assistant inside AICA — "
+        "the AI Chartered Accountant platform. Speak as IRA, not as a generic chatbot.\n"
         f"CURRENT SCREEN: {page_meta['label']} ({path or page_meta['path']}). "
         f"You are helping with {page_meta['focus']}. Stay on this context unless the user needs another module.\n"
-        f"ORGANISATION: {org.name}. GSTIN: {org.gstin or 'not set'}. State: {org.state}. "
-        f"Turnover Rs {snap['sales_total']:.2f}. Operating costs Rs {snap['expenses_total']:.2f}. "
-        f"Profit Rs {snap['profit_total']:.2f}. Net GST payable Rs {snap['net_gst_payable']:.2f}.\n"
+        f"ORGANISATION: {org.name}. GSTIN: {org.gstin or 'not set'}. State: {org.state}.\n"
+        f"{INR_UNIT_LOCK}\n"
+        "STRUCTURED FINANCE (absolute INR — source of truth; do not rescale):\n"
+        f"{json.dumps(snap.get('finance') or structured_finance_block(snap))}\n"
         f"SQL: every query on products, transactions, expenses, employees, assets, compliance, recommendations or anomalies MUST include WHERE org_id = {org.id}. Never read other organisations.\n"
-        "You may explain fields and tax implications. You must NOT claim you submitted a form, created a bill, deleted a record, or changed books.\n"
+        "You may explain fields and tax implications. You must NOT claim you submitted a form, created a bill, deleted a record, or changed books. "
+        "For any request that would modify financial data, ask the user to confirm in the UI before describing steps.\n"
+        "Never call a tax liability a benefit or saving. If asked what they owe, use estimated_tax_liability / net_gst payable fields.\n"
         "Do not navigate the user yourself. If another AICA screen is required to finish their request, explain why, ask permission in the reply, then end with exactly one line:\n"
         'NAV_REQUEST: {"path":"/employees","label":"Payroll","reason":"short reason"}\n'
         f"Allowed paths: {sorted(ALLOWED_NAV_PATHS)}.\n"
@@ -1847,6 +1939,48 @@ def assistant_api(
     )
     if task.strip():
         extra += f"\nONGOING TASK (preserve this until done): {task.strip()}\n"
+
+    opt_payload = None
+    if opt_context.strip():
+        try:
+            opt_payload = json.loads(opt_context)
+        except json.JSONDecodeError:
+            opt_payload = None
+    if isinstance(opt_payload, dict) and opt_payload.get("title"):
+        docs = opt_payload.get("documents") or []
+        if isinstance(docs, list):
+            doc_lines = ", ".join(
+                (d.get("label") if isinstance(d, dict) else str(d)) for d in docs[:12]
+            )
+        else:
+            doc_lines = str(docs)
+        steps = opt_payload.get("next_steps") or []
+        step_txt = " | ".join(str(s) for s in steps[:8]) if isinstance(steps, list) else str(steps)
+        internal = opt_payload.get("internal") or {}
+        external = opt_payload.get("external") or {}
+        extra += (
+            "\nSELECTED AI OPTIMIZATION RECOMMENDATION (user opened Ask IRA from this card):\n"
+            f"- Title: {opt_payload.get('title')}\n"
+            f"- Section: {opt_payload.get('rule_section')}\n"
+            f"- Category: {opt_payload.get('category')}\n"
+            f"- Detected: {opt_payload.get('detected_item')}\n"
+            f"- Why recommended: {opt_payload.get('why_aica') or opt_payload.get('reason')}\n"
+            f"- Eligibility: {opt_payload.get('eligibility_conditions')}\n"
+            f"- Estimated amount ({opt_payload.get('impact_type') or 'impact'} — NOT a guaranteed figure): "
+            f"Rs {opt_payload.get('estimated_tax_impact')} absolute INR\n"
+            f"- Impact label: {opt_payload.get('impact_label')}\n"
+            f"- Documents: {doc_lines}\n"
+            f"- Next steps: {step_txt}\n"
+            f"- Internal AICA path (if any): {(internal or {}).get('path') or 'none'}\n"
+            f"- Official portal (if any): {(external or {}).get('url') or 'none'} ({(external or {}).get('label') or ''})\n"
+            "Explain this recommendation in plain language for a business owner. "
+            "Distinguish estimated potential benefit from confirmed savings. "
+            "Never claim AICA filed or submitted anything. "
+            "If the user asks what to do next, use the next steps above. "
+            "If they ask to open an AICA page and an internal path exists, ask permission then emit NAV_REQUEST. "
+            "If they ask for an official portal, name the portal and URL from the context — do not invent other URLs.\n"
+        )
+
     extra += (
         "If the user just arrived after agreeing to open this page, continue the ongoing task immediately "
         "and tell them what to complete here."
@@ -1855,14 +1989,30 @@ def assistant_api(
     def run_org_query(sql: str) -> str:
         return run_db_query(sql, org.id)
 
-    answer = query_gemini_assistant(
-        question,
-        get_db_schema,
-        run_org_query,
-        collect_rag_rules(question),
-        extra_system=extra,
-        history=history_list,
-    )
+    # Hard wall-clock limit so desktop/WebView never hangs on Gemini quota/retries.
+    import concurrent.futures
+
+    def _run_ira():
+        return query_gemini_assistant(
+            question,
+            get_db_schema,
+            run_org_query,
+            collect_rag_rules(question),
+            extra_system=extra,
+            history=history_list,
+        )
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            fut = pool.submit(_run_ira)
+            answer = fut.result(timeout=float(os.environ.get("AICA_IRA_TIMEOUT_S", "25")))
+    except concurrent.futures.TimeoutError:
+        logging.warning("IRA overall timeout — returning controlled unavailable message")
+        answer = IRA_UNAVAILABLE_MSG
+    except Exception:
+        logging.exception("IRA request failed")
+        answer = IRA_UNAVAILABLE_MSG
+
     cleaned, nav = parse_nav_request(answer)
     return {"answer": cleaned, "navigation": nav}
 
@@ -1871,12 +2021,17 @@ def profile_view(request: Request, db: Session = Depends(get_db)):
     user, org = current_user_org(request, db)
     if not user or not org:
         return login_redirect()
+    from backend.runtime_paths import app_release_info
+    release = app_release_info()
     return templates.TemplateResponse(
         request=request,
         name="profile.html",
         context=page_ctx(request, db, "profile", {
             "error": request.query_params.get("error"),
             "saved": request.query_params.get("saved"),
+            "app_version": release.get("version"),
+            "app_build": release.get("build"),
+            "app_channel": release.get("channel"),
         }, org=org, user=user)
     )
 
@@ -2439,12 +2594,14 @@ async def expense_upload(request: Request, file: UploadFile = File(...), db: Ses
     classification_meta = classify_expense_ai(desc)
     
     # Compute totals
-    taxable_val = float(extracted.get("taxable_value", 0.0))
-    cgst = float(extracted.get("cgst", 0.0))
-    sgst = float(extracted.get("sgst", 0.0))
-    igst = float(extracted.get("igst", 0.0))
-    total_tax = cgst + sgst + igst
-    total_amount = float(extracted.get("total_amount", taxable_val + total_tax))
+    taxable_val = sanitize_ai_amount(extracted.get("taxable_value", 0.0))
+    cgst = sanitize_ai_amount(extracted.get("cgst", 0.0))
+    sgst = sanitize_ai_amount(extracted.get("sgst", 0.0))
+    igst = sanitize_ai_amount(extracted.get("igst", 0.0))
+    total_tax = to_float(D(cgst) + D(sgst) + D(igst))
+    total_amount = sanitize_ai_amount(extracted.get("total_amount", taxable_val + total_tax))
+    if total_amount <= 0:
+        total_amount = to_float(D(taxable_val) + D(total_tax))
     
     # Save Uploaded Invoice
     user, org = current_user_org(request, db)
@@ -2752,14 +2909,74 @@ def income_tax_view(request: Request, db: Session = Depends(get_db)):
 def tax_optimization_view(request: Request, db: Session = Depends(get_db)):
     snap = get_financial_snapshot(db, request=request)
     upsert_rule_based_recommendations(db, snap)
-    oid = snap["org"].id if snap.get("org") else None
-    recs = []
+    org = snap.get("org")
+    oid = org.id if org else None
+    # Purge Gemini rows that treated absolute INR as lakhs (and other implausible impacts)
     if oid:
-        recs = db.query(TaxRecommendation).filter(TaxRecommendation.org_id == oid).order_by(TaxRecommendation.estimated_tax_impact.desc()).all()
+        removed = scrub_optimization_recommendations(db, oid, snap)
+        if removed:
+            logging.warning(
+                "AI Optimization scrubbed %s corrupt recommendation(s) for org_id=%s debug=%s",
+                removed, oid, optimization_debug_snapshot(snap),
+            )
+    recs = []
+    cards = []
+    tax_position = {
+        "turnover": 0, "taxable_income": 0, "tax_liability": 0, "tax_liability_115baa": 0,
+        "eligible_itc": 0, "net_gst_payable": 0, "output_gst": 0,
+        "currency": "INR", "money_unit": "absolute_INR", "finance": {},
+    }
+    potential_savings = 0
+    if oid:
+        recs = (
+            db.query(TaxRecommendation)
+            .filter(TaxRecommendation.org_id == oid)
+            .order_by(TaxRecommendation.estimated_tax_impact.desc())
+            .all()
+        )
+        invoice_count = (
+            db.query(Expense)
+            .filter(
+                Expense.org_id == oid,
+                or_(
+                    (Expense.invoice_number.isnot(None)) & (Expense.invoice_number != ""),
+                    (Expense.doc_path.isnot(None)) & (Expense.doc_path != ""),
+                ),
+            )
+            .count()
+        )
+        counts = {
+            "invoices": invoice_count,
+            "employees": db.query(Employee).filter(Employee.org_id == oid).count(),
+            "assets": db.query(Asset).filter(Asset.org_id == oid).count(),
+        }
+        cards = [enrich_recommendation(r, org, snap, counts) for r in recs]
+        tax_position = {
+            "turnover": snap.get("sales_total", 0),
+            "taxable_income": snap.get("taxable_old", 0),
+            "tax_liability": snap.get("total_tax_old", 0),
+            "tax_liability_115baa": snap.get("total_tax_new", 0),
+            "eligible_itc": snap.get("eligible_itc", 0),
+            "net_gst_payable": snap.get("net_gst_payable", 0),
+            "output_gst": snap.get("output_gst", 0),
+            "currency": "INR",
+            "money_unit": "absolute_INR",
+            "finance": snap.get("finance") or {},
+        }
+        potential_savings = sum(
+            c["estimated_tax_impact"]
+            for c in cards
+            if c.get("impact_type") in ("tax_saving", "tax_credit")
+        )
     return templates.TemplateResponse(
         request=request,
         name="tax_optimization.html",
-        context=page_ctx(request, db, "tax-optimization", {"recommendations": recs})
+        context=page_ctx(request, db, "tax-optimization", {
+            "recommendations": recs,
+            "opt_cards": cards,
+            "tax_position": tax_position,
+            "potential_savings": potential_savings,
+        })
     )
 
 # ---------------- WHAT-IF SIMULATOR ROUTES ----------------
