@@ -45,7 +45,7 @@ class DesktopVoiceBridge:
     def speak_response(self, text: str) -> dict[str, Any]:
         return self._core.speak_response(text)
 
-    def start_voice_listen(self, silence_ms: int = 1800, hold_ms: int = 25000) -> dict[str, Any]:
+    def start_voice_listen(self, silence_ms: int = 1400, hold_ms: int = 20000) -> dict[str, Any]:
         return self._core.start_voice_listen(silence_ms, hold_ms)
 
     def start_wake_listen(self) -> dict[str, Any]:

@@ -817,7 +817,7 @@
 
     function startDesktopCommandListening(opts) {
         const holdMs = (opts && opts.holdMs) || 25000;
-        const silenceMs = (opts && opts.silenceMs) || 1800;
+        const silenceMs = (opts && opts.silenceMs) || 1400;
         stopAmbient();
         stopCommandListening();
 
@@ -953,7 +953,7 @@
             return;
         }
 
-        startCommandListening({ holdMs: 20000, silenceMs: 2600, ignoreMs: 2000 });
+        startCommandListening({ holdMs: 20000, silenceMs: 1400, ignoreMs: 400 });
     }
 
     function startDesktopWakeListen() {
@@ -1094,7 +1094,7 @@
             if (hasDesktopVoiceApi() && typeof window.pywebview.api.warm_up_voice === "function") {
                 Promise.resolve(window.pywebview.api.warm_up_voice()).catch(function () {});
             }
-            startCommandListening({ holdMs: 20000, silenceMs: window.AICA_DESKTOP ? 1800 : 2600 });
+            startCommandListening({ holdMs: 20000, silenceMs: window.AICA_DESKTOP ? 1400 : 2600 });
         });
     }
 

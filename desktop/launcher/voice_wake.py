@@ -73,7 +73,7 @@ class VadWhisperWakeDetector:
                 pcm_buffer.clear()
                 silence_frames = 0
 
-        stream_frames(handle_frame, stop_check)
+        stream_frames(frame_callback=handle_frame, stop_check=stop_check)
 
     def _maybe_fire(self, pcm: bytes, on_wake: Callable[[float], None]) -> None:
         if len(pcm) < FRAME_SAMPLES * 2:

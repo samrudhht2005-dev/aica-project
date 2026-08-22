@@ -78,4 +78,4 @@ class OpenWakeWordDetector:
                     on_wake(score)
                     break
 
-        stream_frames(handle_frame, stop_check)
+        stream_frames(frame_callback=handle_frame, stop_check=stop_check)
