@@ -59,14 +59,23 @@ def project_root() -> Path:
     if override:
         return Path(override).resolve()
     if is_frozen():
+        # PyInstaller onedir may set _MEIPASS to _internal, or leave assets next to the exe.
+        # Inno flattens AICA.Engine.exe + _internal into %LOCALAPPDATA%\\AICA\\.
         meipass = getattr(sys, "_MEIPASS", None)
+        exe_dir = Path(sys.executable).resolve().parent
+        candidates: list[Path] = []
         if meipass:
-            base = Path(meipass)
-            if (base / "frontend").is_dir():
-                return base
-            if (base / ".." / "frontend").is_dir():
-                return (base / "..").resolve()
-        return Path(sys.executable).resolve().parent
+            candidates.append(Path(meipass))
+            candidates.append(Path(meipass).parent)
+        candidates.append(exe_dir / "_internal")
+        candidates.append(exe_dir)
+        for base in candidates:
+            try:
+                if (base / "frontend").is_dir() and (base / "frontend" / "templates").is_dir():
+                    return base.resolve()
+            except OSError:
+                continue
+        return exe_dir
     return Path(__file__).resolve().parent.parent
 
 
