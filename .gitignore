@@ -31,9 +31,11 @@ database/.session_secret
 *.pem
 *.key
 
-# --- Local / empty SQLite leftover (AICA uses PostgreSQL) ---
+# --- Local / empty SQLite leftover (AICA uses PostgreSQL in production) ---
 aica.db
 *.sqlite3
+*.sqlite
+database/_experiment/
 
 # --- Node (if added later) ---
 node_modules/

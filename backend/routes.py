@@ -2273,10 +2273,13 @@ def add_multiple_transactions(request: Request, items: List[CartItem] = Body(...
 def download_invoice(request: Request, transaction_id: int, db: Session = Depends(get_db)):
     user, org = current_user_org(request, db)
     if not org:
+        accept = (request.headers.get("accept") or "").lower()
+        if "application/pdf" in accept or "application/json" in accept:
+            return JSONResponse({"error": "Please sign in again."}, status_code=401)
         return login_redirect()
     t = db.query(Transaction).filter(Transaction.id == transaction_id, Transaction.org_id == org.id).first()
     if not t:
-        return {"error": "Transaction not found"}
+        return JSONResponse({"error": "Transaction not found"}, status_code=404)
         
     date_str = t.created_at.strftime('%Y-%m-%d %H:%M:%S') if t.created_at else "N/A"
     
@@ -2312,7 +2315,7 @@ def download_invoice(request: Request, transaction_id: int, db: Session = Depend
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename}"}
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 # ---------------- WAREHOUSE MANAGEMENT ----------------

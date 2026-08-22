@@ -140,10 +140,28 @@ def is_placeholder_value(key: str, value: str | None) -> bool:
     return False
 
 
+def is_sqlite_url(url: str | None) -> bool:
+    if not url:
+        return False
+    return url.strip().lower().startswith("sqlite:")
+
+
 def is_valid_database_url(url: str | None) -> bool:
     if not url or is_placeholder_value("DATABASE_URL", url):
         return False
-    return url.strip().lower().startswith(("postgresql://", "postgres://"))
+    text = url.strip().lower()
+    return text.startswith(("postgresql://", "postgres://", "sqlite:"))
+
+
+def experimental_sqlite_url() -> str:
+    """Dedicated local SQLite file for the desktop portability experiment (never the packaged 1.0.1 DB)."""
+    override = os.environ.get("AICA_SQLITE_PATH")
+    if override:
+        path = Path(override)
+    else:
+        path = project_root() / "database" / "_experiment" / "aica_experiment.sqlite"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return "sqlite:///" + path.resolve().as_posix()
 
 
 def resolve_database_url() -> str | None:
@@ -151,6 +169,9 @@ def resolve_database_url() -> str | None:
     url = os.environ.get("DATABASE_URL")
     if is_valid_database_url(url):
         return url.strip().strip('"').strip("'")
+    backend = (os.environ.get("AICA_DB_BACKEND") or "").strip().lower()
+    if backend in ("sqlite", "experiment"):
+        return experimental_sqlite_url()
     return None
 
 
@@ -160,7 +181,10 @@ def database_config_error_message() -> str:
         "AICA could not start: DATABASE_URL is missing or still a placeholder.\n\n"
         f"Edit:\n  {cfg}\n\n"
         "Set a real PostgreSQL URL, for example:\n"
-        "  DATABASE_URL=postgresql://USER:PASSWORD@hostname:5432/aica_db\n\n"
+        "  DATABASE_URL=postgresql://USER:PASSWORD@hostname:5432/aica_db\n"
+        "Or, for the desktop SQLite experiment:\n"
+        "  DATABASE_URL=sqlite:///C:/path/to/aica.sqlite\n"
+        "  AICA_DB_BACKEND=sqlite\n\n"
         "Development: use the project .env (never commit it).\n"
         "Installed desktop: use %AppData%\\AICA\\config.env only — "
         "do not leave USER/PASSWORD/HOST template values."

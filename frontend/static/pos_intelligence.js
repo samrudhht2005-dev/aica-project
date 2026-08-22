@@ -20,10 +20,27 @@
         }
     }
 
+    function themeColor(name, fallback) {
+        const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+        return v || fallback;
+    }
+
+    function applyChartTheme() {
+        if (typeof Chart === "undefined") return;
+        const text = themeColor("--text", "#0f172a");
+        const muted = themeColor("--text-muted", "#64748b");
+        const grid = themeColor("--border", "rgba(15,35,70,0.10)");
+        Chart.defaults.color = muted;
+        Chart.defaults.borderColor = grid;
+        Chart.defaults.plugins.legend.labels = Chart.defaults.plugins.legend.labels || {};
+        Chart.defaults.plugins.legend.labels.color = text;
+    }
+
     function lineChart(canvasId, labels, values, label, color) {
         destroyChart(canvasId);
         const el = document.getElementById(canvasId);
         if (!el || typeof Chart === "undefined") return;
+        applyChartTheme();
         charts[canvasId] = new Chart(el, {
             type: "line",
             data: {
@@ -51,6 +68,7 @@
         destroyChart(canvasId);
         const el = document.getElementById(canvasId);
         if (!el || typeof Chart === "undefined") return;
+        applyChartTheme();
         charts[canvasId] = new Chart(el, {
             type: "bar",
             data: {
@@ -76,6 +94,7 @@
         destroyChart(canvasId);
         const el = document.getElementById(canvasId);
         if (!el || typeof Chart === "undefined") return;
+        applyChartTheme();
         const palette = ["#0f766e", "#1d4ed8", "#b45309", "#be123c", "#7c3aed", "#0369a1", "#15803d", "#334155"];
         charts[canvasId] = new Chart(el, {
             type: "doughnut",
@@ -263,44 +282,128 @@
         lineChart("chartProdRev", (d.revenue_trend || []).map((x) => x.label), (d.revenue_trend || []).map((x) => x.value), t("pos.revenue"), "#1d4ed8");
     }
 
-    async function loadHistory(forInvoices) {
-        const q = $("#posHistSearch")?.value || $("#posInvSearch")?.value || "";
-        const date_from = $("#posHistFrom")?.value || $("#posInvFrom")?.value || "";
-        const date_to = $("#posHistTo")?.value || $("#posInvTo")?.value || "";
+    async function fetchHistory(forInvoices) {
+        const q = forInvoices ? ($("#posInvSearch")?.value || "") : ($("#posHistSearch")?.value || "");
+        const date_from = forInvoices ? ($("#posInvFrom")?.value || "") : ($("#posHistFrom")?.value || "");
+        const date_to = forInvoices ? ($("#posInvTo")?.value || "") : ($("#posHistTo")?.value || "");
         const params = new URLSearchParams({
             q, page: String(historyPage), page_size: "15",
         });
         if (date_from) params.set("date_from", date_from);
         if (date_to) params.set("date_to", date_to);
         const res = await fetch("/api/pos/history?" + params.toString(), { credentials: "same-origin" });
-        if (!res.ok) return;
-        const data = await res.json();
-        const tbody = forInvoices ? $("#posInvBody") : $("#posHistBody");
-        const pager = forInvoices ? $("#posInvPager") : $("#posHistPager");
+        if (!res.ok) return null;
+        return res.json();
+    }
+
+    function renderPager(pager, data, forInvoices) {
+        if (!pager) return;
+        pager.innerHTML = `
+                <button type="button" class="btn btn-sm btn-outline-secondary" ${data.page <= 1 ? "disabled" : ""} data-page="${data.page - 1}">${t("common.prev", "Previous")}</button>
+                <span class="small mx-2">${t("common.page", "Page")} ${data.page} ${t("common.of", "of")} ${data.pages}</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary" ${data.page >= data.pages ? "disabled" : ""} data-page="${data.page + 1}">${t("common.next", "Next")}</button>`;
+    }
+
+    async function loadHistory(forInvoices) {
+        const data = await fetchHistory(forInvoices);
+        if (!data) return;
+        if (forInvoices) {
+            renderInvoiceRows(data);
+        } else {
+            renderHistoryRows(data);
+        }
+    }
+
+    function renderHistoryRows(data) {
+        const tbody = $("#posHistBody");
         if (!tbody) return;
         if (!data.items.length) {
-            tbody.innerHTML = `<tr><td colspan="8">${t("common.emptySales")}</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7">${t("common.emptySales", "No sales recorded yet.")}</td></tr>`;
         } else {
             tbody.innerHTML = data.items.map((r) => `
                 <tr>
                     <td>${r.invoice_number}</td>
                     <td>${r.date}</td>
                     <td>${r.time}</td>
-                    <td class="text-truncate" style="max-width:200px">${r.products}</td>
-                    <td>${inr(r.subtotal)}</td>
-                    <td>${inr(r.total_tax)}</td>
+                    <td class="text-truncate" style="max-width:280px" title="${String(r.products || "").replace(/"/g, "&quot;")}">${r.products}</td>
+                    <td>${r.payment_method || "POS"}</td>
                     <td>${inr(r.grand_total)}</td>
                     <td>
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-invoice-id="${r.id}">${t("pos.viewInvoice")}</button>
-                        <a class="btn btn-sm btn-outline-secondary" href="/download_invoice/${r.id}" target="_blank">${t("pos.downloadInvoice")}</a>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-invoice-id="${r.id}">${t("pos.viewSale", "View sale")}</button>
                     </td>
                 </tr>`).join("");
         }
-        if (pager) {
-            pager.innerHTML = `
-                <button type="button" class="btn btn-sm btn-outline-secondary" ${data.page <= 1 ? "disabled" : ""} data-page="${data.page - 1}">${t("common.prev")}</button>
-                <span class="small mx-2">${t("common.page")} ${data.page} ${t("common.of")} ${data.pages}</span>
-                <button type="button" class="btn btn-sm btn-outline-secondary" ${data.page >= data.pages ? "disabled" : ""} data-page="${data.page + 1}">${t("common.next")}</button>`;
+        renderPager($("#posHistPager"), data, false);
+    }
+
+    function renderInvoiceRows(data) {
+        const tbody = $("#posInvBody");
+        if (!tbody) return;
+        const customer = t("pos.walkInCustomer", "Walk-in Customer");
+        if (!data.items.length) {
+            tbody.innerHTML = `<tr><td colspan="8">${t("common.emptySales", "No sales recorded yet.")}</td></tr>`;
+        } else {
+            tbody.innerHTML = data.items.map((r) => `
+                <tr>
+                    <td>${r.invoice_number}</td>
+                    <td>${r.date}</td>
+                    <td>${customer}</td>
+                    <td>${inr(r.subtotal)}</td>
+                    <td>${inr(r.total_tax)}</td>
+                    <td>${inr(r.grand_total)}</td>
+                    <td>${r.status || "Completed"}</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-invoice-id="${r.id}">${t("pos.viewInvoice", "View Invoice")}</button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-download-invoice="${r.id}">${t("pos.downloadInvoice", "Download PDF")}</button>
+                    </td>
+                </tr>`).join("");
+        }
+        renderPager($("#posInvPager"), data, true);
+    }
+
+    async function downloadInvoiceFile(transactionId) {
+        if (!transactionId) return;
+        try {
+            const res = await fetch("/download_invoice/" + transactionId, {
+                credentials: "same-origin",
+                headers: { "Accept": "application/pdf, application/json" },
+            });
+            const contentType = (res.headers.get("Content-Type") || "").toLowerCase();
+            if (!res.ok) {
+                let msg = t("pos.downloadFailed", "Could not download this invoice.");
+                try {
+                    const err = await res.json();
+                    if (err && (err.error || err.detail)) msg = err.error || err.detail;
+                } catch (e) {}
+                alert(msg);
+                return;
+            }
+            if (contentType.includes("text/html")) {
+                alert(t("pos.downloadFailed", "Could not download this invoice. Please sign in again."));
+                return;
+            }
+            if (contentType.includes("application/json")) {
+                const data = await res.json();
+                alert(data.error || data.message || t("pos.downloadFailed", "Could not download this invoice."));
+                return;
+            }
+            const blob = await res.blob();
+            let filename = "invoice.pdf";
+            const contentDisposition = res.headers.get("Content-Disposition") || "";
+            const filenameMatch = contentDisposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)"?/i);
+            if (filenameMatch && filenameMatch[1]) {
+                filename = decodeURIComponent(filenameMatch[1].trim());
+            }
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (e) {
+            alert(t("pos.downloadFailed", "Could not download this invoice."));
         }
     }
 
@@ -350,7 +453,7 @@
             </div>
             <div class="d-flex gap-2 mt-3">
                 <button type="button" class="btn btn-primary btn-sm" id="posPrintInvoiceBtn">${t("pos.printInvoice")}</button>
-                <a class="btn btn-outline-secondary btn-sm" href="${inv.download_url}" target="_blank">${t("pos.downloadInvoice")}</a>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="posDownloadInvoiceBtn" data-download-invoice="${inv.id}">${t("pos.downloadInvoice")}</button>
             </div>`;
         modal.hidden = false;
         $("#posPrintInvoiceBtn")?.addEventListener("click", () => {
@@ -364,6 +467,7 @@
             w.focus();
             w.print();
         });
+        $("#posDownloadInvoiceBtn")?.addEventListener("click", () => downloadInvoiceFile(inv.id));
     }
 
     function bind() {
@@ -396,6 +500,12 @@
         $("#posProductSelect")?.addEventListener("change", loadProductAnalytics);
 
         document.addEventListener("click", (e) => {
+            const dlBtn = e.target.closest("[data-download-invoice]");
+            if (dlBtn) {
+                e.preventDefault();
+                downloadInvoiceFile(dlBtn.getAttribute("data-download-invoice"));
+                return;
+            }
             const invBtn = e.target.closest("[data-invoice-id]");
             if (invBtn) {
                 openInvoice(invBtn.getAttribute("data-invoice-id"));
@@ -428,7 +538,7 @@
         setActiveTab(hash || "checkout");
     }
 
-    window.AICA_POS_INTEL = { setActiveTab, loadIntelligence, openInvoice };
+    window.AICA_POS_INTEL = { setActiveTab, loadIntelligence, openInvoice, downloadInvoiceFile };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
 })();

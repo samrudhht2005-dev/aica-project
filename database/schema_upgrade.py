@@ -1,4 +1,8 @@
-"""Safe, additive schema upgrades. Never drops tables or deletes rows."""
+"""Safe, additive schema upgrades. Never drops tables or deletes rows.
+
+PostgreSQL path keeps historical DDL for existing deployments.
+SQLite path relies on SQLAlchemy create_all (current models) plus portable indexes.
+"""
 from sqlalchemy import inspect, text
 from database.db import engine
 import logging
@@ -19,7 +23,37 @@ def _has_index(inspector, table, name):
         return False
 
 
-def upgrade_schema():
+def _ensure_portable_unique_indexes(conn):
+    """Create org-scoped unique indexes. Safe on Postgres and SQLite.
+
+    Do not call inspect(engine) here — that can deadlock while this
+    connection already holds a schema transaction.
+    """
+    try:
+        with conn.begin_nested():
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_product_org_name "
+                "ON products(org_id, name) WHERE org_id IS NOT NULL"
+            ))
+    except Exception as e:
+        log.warning("Skipped unique product index (existing duplicates): %s", e)
+    try:
+        with conn.begin_nested():
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_org_code "
+                "ON employees(org_id, employee_id) WHERE org_id IS NOT NULL"
+            ))
+    except Exception as e:
+        log.warning("Skipped unique employee index (existing duplicates): %s", e)
+
+
+def _upgrade_sqlite():
+    with engine.begin() as conn:
+        _ensure_portable_unique_indexes(conn)
+    log.info("AICA schema upgrade complete (sqlite; additive indexes only).")
+
+
+def _upgrade_postgresql():
     inspector = inspect(engine)
     with engine.begin() as conn:
         org_cols = _columns(inspector, "organizations")
@@ -69,14 +103,13 @@ def upgrade_schema():
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_org_id ON users(org_id)"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR DEFAULT ''"))
         conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_language VARCHAR DEFAULT 'en'"))
-        try:
-            with conn.begin_nested():
-                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_product_org_name ON products(org_id, name) WHERE org_id IS NOT NULL"))
-        except Exception as e:
-            log.warning("Skipped unique product index (existing duplicates): %s", e)
-        try:
-            with conn.begin_nested():
-                conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_org_code ON employees(org_id, employee_id) WHERE org_id IS NOT NULL"))
-        except Exception as e:
-            log.warning("Skipped unique employee index (existing duplicates): %s", e)
+        _ensure_portable_unique_indexes(conn)
     log.info("AICA schema upgrade complete (additive only).")
+
+
+def upgrade_schema():
+    dialect = getattr(engine.dialect, "name", "") or ""
+    if dialect == "sqlite":
+        _upgrade_sqlite()
+        return
+    _upgrade_postgresql()

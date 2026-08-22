@@ -39,7 +39,7 @@
             <p class="hero-subtitle" data-i18n="pos.subtitle">Scan, bill, and track sales intelligence</p>
         </div>
         <div class="pos-quick-actions">
-            <button type="button" class="btn btn-sm btn-dark" id="posQuickNewSale" data-i18n="pos.newSale">New Sale</button>
+            <button type="button" class="btn modern-btn pos-action-btn" id="posQuickNewSale" data-i18n="pos.newSale">New Sale</button>
             <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
             <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="analytics" data-i18n="pos.analytics">Analytics</button>
             <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="history" data-i18n="pos.history">Sales History</button>
@@ -153,30 +153,119 @@
     .pos-shell-tab {
         border: 1px solid transparent;
         background: transparent;
-        color: #64748b;
+        color: var(--text-muted, #64748b);
         font-size: 0.85rem;
         font-weight: 600;
         padding: 8px 12px;
-        border-radius: 8px;
+        border-radius: var(--radius-sm, 10px);
         cursor: pointer;
     }
-    .pos-shell-tab:hover { background: rgba(15, 23, 42, 0.04); color: #0f172a; }
+    .pos-shell-tab:hover { background: var(--surface-2, rgba(15, 23, 42, 0.04)); color: var(--text, #0f172a); }
     .pos-shell-tab.active {
-        background: #0f172a;
+        background: var(--accent, #0f172a);
         color: #fff;
     }
+    :root[data-theme="dark"] .pos-shell-tab.active { color: #0b1628; }
     .pos-kpi, .pos-mini-kpi {
-        background: var(--card-bg, #fff);
-        border: 1px solid var(--border-color, #e2e8f0);
-        border-radius: 12px;
+        background: var(--surface, var(--card-bg, #fff));
+        border: 1px solid var(--border, var(--border-color, #e2e8f0));
+        border-radius: var(--radius, 12px);
         padding: 14px 16px;
         display: flex;
         flex-direction: column;
         gap: 6px;
         height: 100%;
+        min-width: 0;
+        overflow: visible;
+        color: var(--text, #0f172a);
     }
-    .pos-kpi span, .pos-mini-kpi span { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
-    .pos-kpi strong, .pos-mini-kpi strong { font-size: 1.25rem; color: #0f172a; }
+    .pos-kpi span, .pos-mini-kpi span {
+        font-size: 0.75rem;
+        color: var(--text-muted, #64748b);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        font-weight: 600;
+        line-height: 1.35;
+    }
+    .pos-kpi strong, .pos-mini-kpi strong {
+        font-size: 1.2rem;
+        color: var(--text, #0f172a);
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+    }
+    .pos-action-btn.modern-btn {
+        height: 38px;
+        padding: 0 16px;
+        font-size: 0.85rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: auto;
+        margin: 0;
+    }
+    .pos-tab-panel .form-control-sm,
+    .pos-tab-panel .form-select-sm {
+        height: 38px !important;
+        margin-bottom: 0 !important;
+        min-height: 38px;
+    }
+    .pos-cart-table-wrap {
+        max-height: 380px;
+        overflow: auto;
+        border: 1px solid var(--border, #e2e8f0);
+        border-radius: var(--radius, 14px);
+        background: var(--table-bg, var(--surface));
+    }
+    .pos-cart-table-wrap.table-responsive { overflow: auto; }
+    #cartTable .pos-qty-control {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--border, #e2e8f0);
+        border-radius: var(--radius-sm, 10px);
+        background: var(--input-bg, #f8fafc);
+        overflow: hidden;
+        min-width: 122px;
+        height: 34px;
+    }
+    #cartTable .pos-qty-btn {
+        width: 32px;
+        height: 34px;
+        border: none;
+        background: var(--surface-2, #eef2f7);
+        color: var(--text, #0b1a33);
+        font-size: 1.05rem;
+        line-height: 1;
+        font-weight: 600;
+        cursor: pointer;
+        flex-shrink: 0;
+        padding: 0;
+    }
+    #cartTable .pos-qty-btn:hover { background: var(--surface-hover, #e8eef6); }
+    #cartTable .pos-qty-input.form-control {
+        height: 34px !important;
+        margin: 0 !important;
+        padding: 0 2px !important;
+        width: 52px;
+        min-width: 52px;
+        text-align: center;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        color: var(--text, #0b1a33) !important;
+        font-weight: 700;
+        font-size: 0.95rem;
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+    #cartTable .pos-qty-input::-webkit-outer-spin-button,
+    #cartTable .pos-qty-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+    #cartTable td { vertical-align: middle; }
     .pos-chart-wrap { height: 240px; position: relative; }
     .pos-row-click { cursor: pointer; }
     .pos-row-click:hover { background: rgba(15, 118, 110, 0.06); }
@@ -328,7 +417,7 @@
                 <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearCart()"><i class="bi bi-trash"></i> <span data-i18n="pos.clearAll">Clear All</span></button>
             </div>
             
-            <div class="table-responsive" style="max-height: 380px; overflow-y: auto;">
+            <div class="table-responsive pos-cart-table-wrap">
                 <table class="table" id="cartTable">
                     <thead class="table-light">
                         <tr>
@@ -423,7 +512,7 @@
                 <input type="date" id="posDateFrom" class="form-control form-control-sm" style="width:auto">
                 <label class="small mb-0" data-i18n="pos.to">To</label>
                 <input type="date" id="posDateTo" class="form-control form-control-sm" style="width:auto">
-                <button type="button" class="btn btn-sm btn-dark" id="posApplyCustom" data-i18n="pos.apply">Apply</button>
+                <button type="button" class="btn modern-btn pos-action-btn" id="posApplyCustom" data-i18n="pos.apply">Apply</button>
             </div>
         </div>
         <div id="posAnalyticsEmpty" class="modern-card text-center py-5" hidden>
@@ -440,21 +529,27 @@
         </div>
     </div>
 
-    <!-- HISTORY -->
+    <!-- HISTORY: operational sales ledger (same Transaction rows, sale-line view) -->
     <div class="pos-tab-panel" data-pos-panel="history" hidden>
         <div class="modern-card p-3">
-            <div class="d-flex flex-wrap gap-2 mb-3">
+            <h5 class="card-heading mb-1" data-i18n="pos.history">Sales History</h5>
+            <p class="text-muted small mb-3" data-i18n="pos.historyHint">Completed POS sales with line items from your books.</p>
+            <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
                 <input type="text" id="posHistSearch" class="form-control form-control-sm" style="max-width:240px" data-i18n-placeholder="pos.searchPlaceholder" placeholder="Search…">
                 <input type="date" id="posHistFrom" class="form-control form-control-sm" style="width:auto">
                 <input type="date" id="posHistTo" class="form-control form-control-sm" style="width:auto">
-                <button type="button" class="btn btn-sm btn-dark" id="posHistApply" data-i18n="pos.apply">Apply</button>
+                <button type="button" class="btn modern-btn pos-action-btn" id="posHistApply" data-i18n="pos.apply">Apply</button>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr>
-                        <th data-i18n="pos.invoiceNo">Invoice</th><th data-i18n="common.date">Date</th><th data-i18n="common.time">Time</th>
-                        <th data-i18n="pos.product">Products</th><th data-i18n="pos.subtotal">Subtotal</th>
-                        <th data-i18n="pos.totalTaxLabel">Tax</th><th data-i18n="pos.grandTotal">Total</th><th data-i18n="common.actions">Actions</th>
+                        <th data-i18n="pos.invoiceNo">Invoice</th>
+                        <th data-i18n="common.date">Date</th>
+                        <th data-i18n="common.time">Time</th>
+                        <th data-i18n="pos.product">Products sold</th>
+                        <th data-i18n="pos.payment">Payment</th>
+                        <th data-i18n="pos.grandTotal">Total</th>
+                        <th data-i18n="common.actions">Actions</th>
                     </tr></thead>
                     <tbody id="posHistBody"></tbody>
                 </table>
@@ -463,21 +558,28 @@
         </div>
     </div>
 
-    <!-- INVOICES -->
+    <!-- INVOICES: tax-document view of the same sales (no separate invoice table) -->
     <div class="pos-tab-panel" data-pos-panel="invoices" hidden>
         <div class="modern-card p-3">
-            <div class="d-flex flex-wrap gap-2 mb-3">
+            <h5 class="card-heading mb-1" data-i18n="pos.invoices">Invoices</h5>
+            <p class="text-muted small mb-3" data-i18n="pos.invoicesHint">Tax invoices generated from completed sales. Download the PDF document here.</p>
+            <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
                 <input type="text" id="posInvSearch" class="form-control form-control-sm" style="max-width:240px" data-i18n-placeholder="pos.searchPlaceholder" placeholder="Search…">
                 <input type="date" id="posInvFrom" class="form-control form-control-sm" style="width:auto">
                 <input type="date" id="posInvTo" class="form-control form-control-sm" style="width:auto">
-                <button type="button" class="btn btn-sm btn-dark" id="posInvApply" data-i18n="pos.apply">Apply</button>
+                <button type="button" class="btn modern-btn pos-action-btn" id="posInvApply" data-i18n="pos.apply">Apply</button>
             </div>
             <div class="table-responsive">
                 <table class="table table-sm align-middle">
                     <thead><tr>
-                        <th data-i18n="pos.invoiceNo">Invoice</th><th data-i18n="common.date">Date</th><th data-i18n="common.time">Time</th>
-                        <th data-i18n="pos.product">Products</th><th data-i18n="pos.subtotal">Subtotal</th>
-                        <th data-i18n="pos.totalTaxLabel">Tax</th><th data-i18n="pos.grandTotal">Total</th><th data-i18n="common.actions">Actions</th>
+                        <th data-i18n="pos.invoiceNo">Invoice</th>
+                        <th data-i18n="common.date">Date</th>
+                        <th data-i18n="pos.customer">Customer</th>
+                        <th data-i18n="pos.subtotal">Subtotal</th>
+                        <th data-i18n="pos.totalTaxLabel">Tax</th>
+                        <th data-i18n="pos.grandTotal">Grand Total</th>
+                        <th data-i18n="common.status">Status</th>
+                        <th data-i18n="common.actions">Actions</th>
                     </tr></thead>
                     <tbody id="posInvBody"></tbody>
                 </table>
@@ -1172,6 +1274,17 @@ document.getElementById('addToCartForm').addEventListener('submit', function(e) 
     playScanBeep();
 });
 
+function formatCartQty(q) {
+    const n = Number(q);
+    if (!isFinite(n) || n <= 0) return '1';
+    if (Number.isInteger(n)) return String(n);
+    return String(Math.round(n * 1000) / 1000);
+}
+
+function qtyStepForItem(item) {
+    return item && item.isWeight ? 0.1 : 1;
+}
+
 function renderCart() {
     const tbody = document.getElementById('cartBody');
     tbody.innerHTML = '';
@@ -1181,7 +1294,11 @@ function renderCart() {
     let grandTotal = 0;
     
     cartItems.forEach((item, index) => {
-        const itemSubtotal = item.price * item.quantity;
+        if (item.quantity == null || item.quantity === '' || Number(item.quantity) <= 0 || !isFinite(Number(item.quantity))) {
+            item.quantity = 1;
+        }
+        const qty = Number(item.quantity);
+        const itemSubtotal = item.price * qty;
         const gstRate = classifyGst(item.product);
         const itemGst = itemSubtotal * gstRate / 100;
         const itemTotal = itemSubtotal + itemGst;
@@ -1190,20 +1307,25 @@ function renderCart() {
         totalTax += itemGst;
         grandTotal += itemTotal;
         
-        let stepAttr = item.isWeight ? 'step="any"' : '';
-        let inputSuffix = item.isWeight ? '<span class="input-group-text p-1" style="font-size: 0.8rem;">kg</span>' : '';
+        const step = qtyStepForItem(item);
+        const qtyLabel = formatCartQty(qty);
+        const unitHint = item.isWeight ? '<span class="text-muted" style="font-size:0.72rem;margin-left:4px;">kg</span>' : '';
         
         tbody.innerHTML += `
             <tr>
                 <td class="align-middle">${item.product}</td>
                 <td class="align-middle">₹${item.price.toFixed(2)}</td>
-                <td class="align-middle" style="width: 110px;">
-                    <div class="input-group input-group-sm">
-                        <input type="number" class="form-control" value="${item.quantity}" ${stepAttr} onchange="updateQty(${index}, this.value)">
-                        ${inputSuffix}
+                <td class="align-middle" style="min-width: 148px;">
+                    <div class="d-flex align-items-center gap-1">
+                        <div class="pos-qty-control" role="group" aria-label="Quantity">
+                            <button type="button" class="pos-qty-btn" onclick="updateQty(${index}, ${qty - step})" aria-label="Decrease quantity">−</button>
+                            <input type="number" class="form-control pos-qty-input" min="${step}" step="${step}" value="${qtyLabel}" aria-label="Quantity" onchange="updateQty(${index}, this.value)">
+                            <button type="button" class="pos-qty-btn" onclick="updateQty(${index}, ${qty + step})" aria-label="Increase quantity">+</button>
+                        </div>
+                        ${unitHint}
                     </div>
                 </td>
-                <td class="align-middle" style="font-size: 0.9em; color: #64748b;">₹${itemGst.toFixed(2)} (${gstRate}%)</td>
+                <td class="align-middle" style="font-size: 0.9em; color: var(--text-muted, #64748b);">₹${itemGst.toFixed(2)} (${gstRate}%)</td>
                 <td class="align-middle" style="font-weight: 500;">₹${itemTotal.toFixed(2)}</td>
                 <td class="align-middle">
                     <button type="button" class="btn btn-sm btn-danger" onclick="removeItem(${index})">X</button>
@@ -1339,7 +1461,7 @@ async function submitTransaction() {
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="/static/pos_intelligence.js"></script>
+<script src="/static/pos_intelligence.js?v=2"></script>
 
 </body>
 </html>

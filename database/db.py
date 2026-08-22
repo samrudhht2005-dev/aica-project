@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -11,6 +11,7 @@ try:
         resolve_database_url,
         database_config_error_message,
         is_frozen,
+        is_sqlite_url,
     )
     load_runtime_env()
 except Exception:
@@ -29,6 +30,9 @@ except Exception:
     def is_frozen():
         return bool(getattr(sys, "frozen", False))
 
+    def is_sqlite_url(url):
+        return bool(url) and str(url).lower().startswith("sqlite:")
+
 
 DATABASE_URL = resolve_database_url()
 
@@ -41,7 +45,27 @@ if not DATABASE_URL:
     # Pure web/dev without .env: last-resort local default (not used for desktop).
     DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aica_db"
 
-engine = create_engine(DATABASE_URL)
+
+def _configure_sqlite_connection(dbapi_connection, _connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA busy_timeout=5000")
+    cursor.close()
+
+
+def _make_engine(url: str):
+    if is_sqlite_url(url):
+        eng = create_engine(
+            url,
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        event.listen(eng, "connect", _configure_sqlite_connection)
+        return eng
+    return create_engine(url)
+
+
+engine = _make_engine(DATABASE_URL)
 
 SessionLocal = sessionmaker(
     autocommit=False,

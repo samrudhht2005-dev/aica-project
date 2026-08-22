@@ -18,3 +18,9 @@ def test_real_shaped_url_accepted():
     good = "postgresql://aica_user:secret@db.internal.example:5432/aica_db"
     assert is_valid_database_url(good)
     assert not is_placeholder_value("DATABASE_URL", good)
+
+
+def test_sqlite_url_accepted():
+    sqlite_url = "sqlite:///C:/Users/test/aica_experiment.sqlite"
+    assert is_valid_database_url(sqlite_url)
+    assert not is_placeholder_value("DATABASE_URL", sqlite_url)
