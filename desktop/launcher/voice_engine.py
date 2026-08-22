@@ -263,7 +263,7 @@ class ModernVoiceEngine:
 
         def run_wake() -> None:
             self._queue("started", {"backend": self.BACKEND_NAME, "mode": "wake"})
-            vdiag("WAKE_DETECTION", stage="loop_start")
+            vdiag("WAKE_DETECTION", phase="loop_start")
             try:
                 self._wake.run_loop(
                     on_wake=on_wake,
