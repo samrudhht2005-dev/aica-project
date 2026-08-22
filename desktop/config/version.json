@@ -1,9 +1,9 @@
 ﻿{
     "name":  "AICA",
-    "version":  "1.0.1",
+    "version":  "1.0.2",
     "channel":  "stable",
-    "build":  "2026-08-21T20.18.07+05:30",
-    "window_title":  "AICA â€” Financial Intelligence",
+    "build":  "2026-08-22T09.55.40+05:30",
+    "window_title":  "AICA — Financial Intelligence",
     "update":  {
                    "strategy":  "github_releases",
                    "notes":  "Future releases publish AICA_Setup_x.y.z.exe. Same AppId upgrades %LOCALAPPDATA%\\AICA in place."

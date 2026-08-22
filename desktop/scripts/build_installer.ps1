@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 
-$Version = "1.0.1"
+$Version = "1.0.2"
 $env:AICA_VERSION = $Version
 $env:AICA_BUILD = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssK")
 

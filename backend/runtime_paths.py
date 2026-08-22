@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 APP_NAME = "AICA"
-APP_VERSION = os.environ.get("AICA_VERSION", "1.0.1")
+APP_VERSION = os.environ.get("AICA_VERSION", "1.0.2")
 APP_WINDOW_TITLE = "AICA — Financial Intelligence"
 
 
@@ -154,7 +154,7 @@ def is_valid_database_url(url: str | None) -> bool:
 
 
 def experimental_sqlite_url() -> str:
-    """Dedicated local SQLite file for the desktop portability experiment (never the packaged 1.0.1 DB)."""
+    """Repo-local SQLite file for automated experiments (never the packaged user DB)."""
     override = os.environ.get("AICA_SQLITE_PATH")
     if override:
         path = Path(override)
@@ -164,14 +164,25 @@ def experimental_sqlite_url() -> str:
     return "sqlite:///" + path.resolve().as_posix()
 
 
+def desktop_sqlite_url() -> str:
+    """Persistent per-user SQLite file under %AppData%\\AICA\\ (or AICA_APPDATA)."""
+    path = appdata_dir() / "aica.db"
+    return "sqlite:///" + path.resolve().as_posix()
+
+
 def resolve_database_url() -> str | None:
     """Return a usable DATABASE_URL, or None if missing/placeholder."""
     url = os.environ.get("DATABASE_URL")
     if is_valid_database_url(url):
         return url.strip().strip('"').strip("'")
     backend = (os.environ.get("AICA_DB_BACKEND") or "").strip().lower()
+    if backend in ("postgres", "postgresql"):
+        return None
     if backend in ("sqlite", "experiment"):
         return experimental_sqlite_url()
+    # Packaged desktop: SQLite by default (no PostgreSQL required).
+    if is_frozen():
+        return desktop_sqlite_url()
     return None
 
 
@@ -180,13 +191,12 @@ def database_config_error_message() -> str:
     return (
         "AICA could not start: DATABASE_URL is missing or still a placeholder.\n\n"
         f"Edit:\n  {cfg}\n\n"
-        "Set a real PostgreSQL URL, for example:\n"
+        "Set a PostgreSQL URL (web/development), for example:\n"
         "  DATABASE_URL=postgresql://USER:PASSWORD@hostname:5432/aica_db\n"
-        "Or, for the desktop SQLite experiment:\n"
-        "  DATABASE_URL=sqlite:///C:/path/to/aica.sqlite\n"
-        "  AICA_DB_BACKEND=sqlite\n\n"
+        "Packaged desktop defaults to a local SQLite file:\n"
+        f"  {appdata_dir() / 'aica.db'}\n\n"
         "Development: use the project .env (never commit it).\n"
-        "Installed desktop: use %AppData%\\AICA\\config.env only — "
+        "Installed desktop: optional overrides in %AppData%\\AICA\\config.env — "
         "do not leave USER/PASSWORD/HOST template values."
     )
 
@@ -268,6 +278,8 @@ def ensure_appdata_config_template() -> None:
         "# AICA desktop configuration\n"
         "# Fill in real values. Do not leave USER / PASSWORD / HOST placeholders.\n"
         "#\n"
+        "# Desktop uses SQLite by default (aica.db in this folder).\n"
+        "# Optional hosted PostgreSQL:\n"
         "# DATABASE_URL=postgresql://USER:PASSWORD@your-db-host:5432/aica_db\n"
         "# GEMINI_API_KEY=\n"
         "# AICA_SECRET_KEY=\n"

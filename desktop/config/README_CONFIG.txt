@@ -1,30 +1,28 @@
 AICA Desktop — first-run configuration
 ======================================
 
-1. After install, edit:
+Packaged AICA 1.0.2 uses a local SQLite database by default:
 
-   %AppData%\AICA\config.env
+   %AppData%\AICA\aica.db
 
-2. Set DATABASE_URL to a REAL PostgreSQL connection string.
-   Do NOT leave USER, PASSWORD, or HOST template words — AICA ignores those
-   and will refuse to start rather than connect to a fake host.
+PostgreSQL is not required to start the desktop app.
 
-   Development (this PC): use the same URL as your project .env.
-   Production (other laptops): use your hosted PostgreSQL URL.
+Optional overrides (edit %AppData%\AICA\config.env):
 
-3. Set GEMINI_API_KEY for IRA / OCR / AI features (optional for login/POS).
-   Never share this key or commit it to Git.
+1. DATABASE_URL=postgresql://...  — only if you want hosted/web PostgreSQL
+2. GEMINI_API_KEY=...            — IRA / OCR / AI Optimization
+3. AICA_SECRET_KEY=...           — optional session secret
 
-4. Launch AICA from the Start Menu or Desktop shortcut.
+Do NOT leave USER, PASSWORD, or HOST template words in DATABASE_URL.
 
 Logs:
    %AppData%\AICA\logs\
 
-Web developers continue to use the project .env + uvicorn as before.
+Web developers continue to use the project .env + uvicorn + PostgreSQL as before.
 The desktop build does not replace the web workflow.
 
 Configuration precedence:
   1) Process environment (highest)
   2) %AppData%\AICA\config.env (valid values only)
-  3) Project .env (development)
-  4) No fake DATABASE_URL fallback for desktop
+  3) Packaged desktop SQLite default (%AppData%\AICA\aica.db)
+  4) Project .env (development / web)

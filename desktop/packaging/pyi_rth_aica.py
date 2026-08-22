@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("AICA_DESKTOP", "1")
-os.environ.setdefault("AICA_VERSION", "1.0.0")
+os.environ.setdefault("AICA_VERSION", "1.0.2")
 
 if getattr(sys, "frozen", False):
     meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))

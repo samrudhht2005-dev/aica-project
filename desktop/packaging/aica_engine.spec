@@ -38,6 +38,7 @@ hiddenimports = [
     "uvicorn.lifespan",
     "uvicorn.lifespan.on",
     "sqlalchemy.dialects.postgresql",
+    "sqlalchemy.dialects.sqlite",
     "psycopg2",
     "cv2",
     "ultralytics",

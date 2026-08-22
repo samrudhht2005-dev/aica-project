@@ -3,7 +3,7 @@
 ; Same AppId across versions so future setups upgrade in place.
 
 #define MyAppName "AICA"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "AICA"
 #define MyAppURL "https://github.com/samrudhht2005-dev/aica-project"
 #define MyAppExeName "AICA.exe"

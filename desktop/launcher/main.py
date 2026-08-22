@@ -89,25 +89,19 @@ def _engine_executable() -> Path | None:
 def _ensure_database_url() -> bool:
     """
     Resolve DATABASE_URL for the engine child.
-    Packaged local demo: if AppData is empty/placeholder, allow repo .env when
-    AICA.exe lives under dist/ next to the project (never embeds secrets).
+    Packaged desktop defaults to persistent SQLite under AppData (or AICA_APPDATA).
+    Explicit postgresql:// DATABASE_URL is still honored for web/dev.
     """
     load_runtime_env()
-    if resolve_database_url():
+    url = resolve_database_url()
+    if url:
+        os.environ["DATABASE_URL"] = url
         return True
-    if is_frozen():
-        here = Path(sys.executable).resolve().parent
-        for candidate in (
-            here.parent / ".env",
-            here.parent.parent / ".env",
-            Path(os.environ.get("AICA_ENV_FILE") or ""),
-        ):
-            if candidate and candidate.is_file():
-                os.environ["AICA_ENV_FILE"] = str(candidate)
-                load_runtime_env()
-                if resolve_database_url():
-                    return True
-    return bool(resolve_database_url())
+    if is_frozen() or os.environ.get("AICA_DESKTOP") == "1":
+        from backend.runtime_paths import desktop_sqlite_url
+        os.environ["DATABASE_URL"] = desktop_sqlite_url()
+        return True
+    return False
 
 
 def _start_engine(port: int) -> subprocess.Popen:
@@ -216,7 +210,7 @@ def main() -> int:
             _show_error(
                 "AICA engine started but did not become ready in time.\n\n"
                 f"Check logs:\n{logs_dir() / 'engine.log'}\n\n"
-                "Ensure a real DATABASE_URL (not USER/PASSWORD@HOST) is set in:\n"
+                "Desktop uses a local SQLite file by default. Optional DATABASE_URL overrides go in:\n"
                 f"{config_env_path()}"
             )
             _stop_engine()

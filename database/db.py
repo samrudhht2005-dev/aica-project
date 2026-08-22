@@ -12,6 +12,7 @@ try:
         database_config_error_message,
         is_frozen,
         is_sqlite_url,
+        desktop_sqlite_url,
     )
     load_runtime_env()
 except Exception:
@@ -33,17 +34,22 @@ except Exception:
     def is_sqlite_url(url):
         return bool(url) and str(url).lower().startswith("sqlite:")
 
+    def desktop_sqlite_url():
+        from pathlib import Path
+        base = os.environ.get("AICA_APPDATA") or os.environ.get("APPDATA") or "."
+        path = Path(base) / "AICA" / "aica.db"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return "sqlite:///" + path.resolve().as_posix()
+
 
 DATABASE_URL = resolve_database_url()
 
 if not DATABASE_URL:
-    # Desktop / packaged: fail clearly — never connect to template host "HOST".
-    if is_frozen() or os.environ.get("AICA_DESKTOP") == "1":
-        msg = database_config_error_message()
-        print(msg, file=sys.stderr)
-        raise RuntimeError(msg)
-    # Pure web/dev without .env: last-resort local default (not used for desktop).
-    DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aica_db"
+    if is_frozen():
+        DATABASE_URL = desktop_sqlite_url()
+    else:
+        # Pure web/dev without .env: last-resort local default (not used for packaged desktop).
+        DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aica_db"
 
 
 def _configure_sqlite_connection(dbapi_connection, _connection_record):

@@ -9,8 +9,12 @@ from pathlib import Path
 
 
 def webview_user_data_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
-    path = Path(base) / "AICA" / "webview"
+    override = os.environ.get("AICA_APPDATA")
+    if override:
+        path = Path(override) / "webview"
+    else:
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or str(Path.home())
+        path = Path(base) / "AICA" / "webview"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
