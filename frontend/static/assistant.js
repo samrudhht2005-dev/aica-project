@@ -99,6 +99,19 @@
         }
     }
 
+    function hasNativeTts() {
+        try {
+            return hasDesktopVoiceApi() && typeof window.pywebview.api.speak_response === "function";
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isModernVoiceBackend() {
+        const b = window.AICA_VOICE_BACKEND || "";
+        return b === "aica-voice-v2" || b.indexOf("aica-voice") === 0;
+    }
+
     function isDesktopShell() {
         return !!(window.AICA_DESKTOP || window.pywebview || (window.chrome && window.chrome.webview));
     }
@@ -164,6 +177,21 @@
                 endListenGracefully(t("assistant.didntCatch", "I didn't catch that — try the mic again."));
                 return;
             }
+            // Backend intent routing (faster-whisper path)
+            if (payload && payload.intent_path && payload.intent) {
+                openPanel();
+                state.messages.push({ role: "user", text: text });
+                const speakLine = navSpeakForIntent(payload.intent) || "Done.";
+                state.messages.push({ role: "assistant", text: speakLine });
+                saveState(state);
+                renderMessages();
+                speak(speakLine, () => {
+                    state.pendingIntro = true;
+                    saveState(state);
+                    window.location.href = payload.intent_path;
+                });
+                return;
+            }
             handleUserCommand(text, true);
             return;
         }
@@ -195,12 +223,13 @@
 
     const NAV_ROUTES = [
         { re: /\b(open|go to|show|take me to)\s+(the\s+)?dashboard\b/i, path: "/", label: "Dashboard", speak: "Opening Dashboard." },
-        { re: /\b(open|go to|show)\s+(the\s+)?(expenses?|expense ledger)\b/i, path: "/expenses", label: "Expenses", speak: "Opening Expenses." },
+        { re: /\b(open|go to|show|take me to)\s+(the\s+)?(expenses?|expense ledger)\b/i, path: "/expenses", label: "Expenses", speak: "Sure, opening your expenses." },
         { re: /\b(open|go to|show)\s+(the\s+)?(payroll|employees?)\b/i, path: "/employees", label: "Payroll", speak: "Opening Payroll." },
         { re: /\b(open|go to|show)\s+(the\s+)?(gst|g\.?s\.?t\.?|itc)\b/i, path: "/gst", label: "GST & ITC", speak: "Opening GST and ITC." },
         { re: /\b(open|go to|show)\s+(the\s+)?(inventory|warehouse|stock)\b/i, path: "/warehouse", label: "Warehouse", speak: "Opening Inventory." },
-        { re: /\b(open|go to|show)\s+(the\s+)?(pos|point of sale|checkout|scanner)\b/i, path: "/pos", label: "POS", speak: "Opening POS." },
-        { re: /\b(open|go to|show|show me)\s+(the\s+)?(sales|sales analytics|analytics)\b/i, path: UI_MODE === "pos" ? "/pos#overview" : "/sales", label: "Sales", speak: "Opening Sales." },
+        { re: /\b(open|go to|show)\s+(the\s+)?(pos|point of sale|checkout|scanner)\b/i, path: "/pos", label: "POS", speak: "Sure, switching you to POS." },
+        { re: /\b(open|go to|show|take me to)\s+(the\s+)?(sales|sales analytics|analytics)\b/i, path: UI_MODE === "pos" ? "/pos#overview" : "/sales", label: "Sales", speak: "Sure, opening sales." },
+        { re: /\b(switch to|go to|open)\s+(the\s+)?(pos|point of sale|checkout|scanner|billing)\b/i, path: "/pos", label: "POS", speak: "Sure, switching you to POS." },
         { re: /\b(open|go to|show)\s+(the\s+)?(income tax|incometax)\b/i, path: "/income-tax", label: "Income Tax", speak: "Opening Income Tax." },
         { re: /\b(open|go to|show)\s+(the\s+)?(fixed assets?|assets)\b/i, path: "/assets", label: "Fixed Assets", speak: "Opening Fixed Assets." },
         { re: /\b(open|go to|show)\s+(the\s+)?(reports?)\b/i, path: "/reports", label: "Reports", speak: "Opening Reports." },
@@ -390,13 +419,51 @@
         } catch (e) { /* ignore */ }
     }
 
+    function navSpeakForIntent(intentName) {
+        const map = {
+            OPEN_DASHBOARD: "Sure, opening your dashboard.",
+            OPEN_EXPENSES: "Sure, opening your expenses.",
+            OPEN_SALES: "Sure, opening sales.",
+            OPEN_POS: "Sure, switching you to POS.",
+            OPEN_INVENTORY: "Sure, opening inventory.",
+            OPEN_BILLING: "Sure, opening the billing counter.",
+            OPEN_REPORTS: "Sure, opening reports.",
+            OPEN_ANALYTICS: "Sure, opening sales analytics.",
+            OPEN_ORGANIZATION: "Sure, opening organization settings.",
+            OPEN_INTERFACE: "Sure, opening interface selection.",
+        };
+        return map[intentName] || null;
+    }
+
     function speak(text, onDone) {
+        const plain = plainTextForSpeech(text);
+        if (!plain) {
+            if (onDone) onDone();
+            return;
+        }
+        if (hasNativeTts() && isModernVoiceBackend()) {
+            stopSpeech();
+            setVoiceUI("speaking");
+            setIraMode("responding", t("assistant.speaking", "Speaking…"));
+            Promise.resolve(window.pywebview.api.speak_response(plain))
+                .then(() => {
+                    setVoiceUI("idle");
+                    if (onDone) onDone();
+                    else setIraMode("complete");
+                })
+                .catch(() => {
+                    setVoiceUI("idle");
+                    if (onDone) onDone();
+                    else setIraMode("complete");
+                });
+            return;
+        }
         if (!window.speechSynthesis) {
             if (onDone) onDone();
             return;
         }
         stopSpeech();
-        const utter = new SpeechSynthesisUtterance(plainTextForSpeech(text));
+        const utter = new SpeechSynthesisUtterance(plain);
         utter.lang = speechLang();
         utter.rate = 1.05;
         speakingUtterance = utter;
@@ -1024,6 +1091,9 @@
             localStorage.setItem(AMBIENT_KEY, "1");
             if (panel.hidden) openPanel();
             setIraMode("listening", t("assistant.listening", "Listening…"));
+            if (hasDesktopVoiceApi() && typeof window.pywebview.api.warm_up_voice === "function") {
+                Promise.resolve(window.pywebview.api.warm_up_voice()).catch(function () {});
+            }
             startCommandListening({ holdMs: 20000, silenceMs: window.AICA_DESKTOP ? 1800 : 2600 });
         });
     }

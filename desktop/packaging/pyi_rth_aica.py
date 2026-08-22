@@ -13,3 +13,6 @@ if getattr(sys, "frozen", False):
         os.environ.setdefault("AICA_ROOT", str(meipass))
     else:
         os.environ.setdefault("AICA_ROOT", str(Path(sys.executable).resolve().parent))
+    os.environ.setdefault("AICA_WHISPER_THREADS", "1")
+    os.environ.setdefault("OMP_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")

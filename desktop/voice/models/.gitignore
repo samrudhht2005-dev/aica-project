@@ -1,0 +1,9 @@
+# Bundled voice models (large — download via setup_voice_models.py)
+*.bin
+*.onnx
+*.pt
+*.npz
+model/
+**/whisper-small.en/
+**/openwakeword/
+hey_ira.json

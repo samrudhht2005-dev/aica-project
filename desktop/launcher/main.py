@@ -186,7 +186,193 @@ def _show_error(message: str) -> None:
         print(message, file=sys.stderr)
 
 
+def whisper_minimal_test() -> int:
+    """Minimal packaged/dev Whisper test — load model, transcribe bundled PCM, exit."""
+    import json
+    from pathlib import Path
+
+    from desktop.launcher.voice_diag import vdiag
+    from desktop.launcher.voice_paths import faster_whisper_assets_dir, whisper_model_dir
+    from desktop.launcher.voice_stt import WhisperSTT
+
+    def _log(body: str) -> None:
+        try:
+            p = logs_dir() / "whisper_minimal_test.log"
+            p.write_text(body, encoding="utf-8")
+        except Exception:
+            pass
+
+    vdiag("MINIMAL_TEST_START", argv=list(sys.argv))
+    model_path = whisper_model_dir()
+    vad_path = faster_whisper_assets_dir() / "silero_vad_v6.onnx"
+    vdiag(
+        "MINIMAL_TEST_PATHS",
+        model_path=str(model_path),
+        model_bin=(model_path / "model.bin").is_file(),
+        vad_path=str(vad_path),
+        vad_exists=vad_path.is_file(),
+        meipass=getattr(sys, "_MEIPASS", None),
+    )
+
+    pcm_dirs: list[Path] = [_REPO / "desktop" / "voice" / "assets"]
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            pcm_dirs.insert(0, Path(meipass) / "desktop" / "voice" / "assets")
+        pcm_dirs.insert(0, Path(sys.executable).resolve().parent / "voice" / "assets")
+
+    pcm: bytes | None = None
+    for d in pcm_dirs:
+        candidate = d / "selftest_open_expenses.pcm"
+        if candidate.is_file():
+            pcm = candidate.read_bytes()
+            vdiag("MINIMAL_TEST_PCM", path=str(candidate), bytes=len(pcm))
+            break
+    if not pcm:
+        vdiag("MINIMAL_TEST_FAIL", reason="missing_pcm")
+        _log("FAIL missing selftest_open_expenses.pcm\n")
+        return 1
+
+    stt = WhisperSTT.get()
+    stt.ensure_loaded()
+    out = stt.transcribe_pcm(pcm)
+    text = (out.get("text") or "").strip()
+    ok = bool(text)
+    result = "WHISPER_MINIMAL_OK" if ok else "WHISPER_MINIMAL_FAIL"
+    vdiag("MINIMAL_TEST_DONE", text=text, ok=ok, latency_ms=out.get("latency_ms"))
+    body = json.dumps(
+        {
+            "result": result,
+            "text": text,
+            "latency_ms": out.get("latency_ms"),
+            "model_path": str(model_path),
+            "segments": len(out.get("segments") or []),
+        },
+        indent=2,
+    )
+    _log(body + "\n")
+    print(result, text)
+    return 0 if ok else 1
+
+
+def voice_selftest() -> int:
+    """CLI self-test for packaged voice stack (no WebView)."""
+    import audioop
+    import json
+    import tempfile
+    import wave
+
+    from desktop.launcher.voice_diag import vdiag
+    from desktop.launcher.voice_engine import ModernVoiceEngine
+    from desktop.launcher.voice_intents import match_intent
+    from desktop.launcher.voice_stt import WhisperSTT
+    from desktop.launcher.voice_tts import NativeTTS
+
+    def _write_log(body: str) -> None:
+        try:
+            from backend.runtime_paths import logs_dir
+
+            (logs_dir() / "voice_selftest.log").write_text(body, encoding="utf-8")
+        except Exception:
+            pass
+
+    def wav_to_pcm16_16k(wav_path: Path) -> bytes:
+        with wave.open(str(wav_path), "rb") as wf:
+            rate = wf.getframerate()
+            width = wf.getsampwidth()
+            pcm = wf.readframes(wf.getnframes())
+            if width != 2:
+                pcm = audioop.lin2lin(pcm, width, 2)
+            if wf.getnchannels() == 2:
+                pcm = audioop.tomono(pcm, 2, 0.5, 0.5)
+            if rate != 16000:
+                pcm, _ = audioop.ratecv(pcm, 2, 1, rate, 16000, None)
+            return pcm
+
+    def synth_wav(text: str, path: Path) -> None:
+        import clr  # type: ignore
+
+        clr.AddReference(r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF\System.Speech.dll")
+        clr.AddReference("System")
+        from System.IO import FileStream, FileMode  # type: ignore
+        from System.Speech.Synthesis import SpeechSynthesizer  # type: ignore
+
+        synth = SpeechSynthesizer()
+        stream = FileStream(str(path), FileMode.Create)
+        try:
+            synth.SelectVoice("Microsoft Zira Desktop")
+            synth.SetOutputToWaveStream(stream)
+            synth.Speak(text)
+        finally:
+            synth.SetOutputToNull()
+            stream.Close()
+            synth.Dispose()
+
+    print("AICA voice self-test")
+    vdiag("SELFTEST_START")
+    _write_log("status=started\n")
+    engine = ModernVoiceEngine()
+    vdiag("SELFTEST_MIC_START")
+    print("mic:", json.dumps(engine.mic_available()))
+    vdiag("SELFTEST_WARMUP_START")
+    warm = engine.warm_up()
+    vdiag("SELFTEST_WARMUP_RETURN", ok=warm.get("ok"))
+    print("warm_up:", json.dumps(warm))
+    if not warm.get("ok"):
+        _write_log(f"status=warm_up_failed\nwarm={json.dumps(warm)}\n")
+        return 1
+
+    def selftest_pcm() -> bytes:
+        asset_dirs = []
+        if getattr(sys, "frozen", False):
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                asset_dirs.append(Path(meipass) / "desktop" / "voice" / "assets")
+            asset_dirs.append(Path(sys.executable).resolve().parent / "voice" / "assets")
+        asset_dirs.append(_REPO / "desktop" / "voice" / "assets")
+        for d in asset_dirs:
+            pcm_path = d / "selftest_open_expenses.pcm"
+            if pcm_path.is_file():
+                return pcm_path.read_bytes()
+        wav = Path(tempfile.mkdtemp()) / "stt.wav"
+        synth_wav("open expenses", wav)
+        return wav_to_pcm16_16k(wav)
+
+    pcm = selftest_pcm()
+    vdiag("SELFTEST_PCM_READY", bytes=len(pcm))
+    vdiag("SELFTEST_TRANSCRIBE_START")
+    out = WhisperSTT.get().transcribe_pcm(pcm)
+    vdiag("SELFTEST_TRANSCRIBE_RETURN", text=out.get("text"))
+    print("whisper:", json.dumps({k: out[k] for k in ("text", "confidence", "latency_ms")}))
+    vdiag("SELFTEST_INTENT_START")
+    m = match_intent(out.get("text") or "")
+    vdiag("SELFTEST_INTENT_RETURN", intent=m.intent.name if m else None)
+    print("intent:", m.intent.name if m else None)
+
+    vdiag("SELFTEST_TTS_START")
+    spoke = NativeTTS().speak("Voice self test OK.")
+    vdiag("SELFTEST_TTS_RETURN", ok=spoke.get("ok"))
+    print("tts:", json.dumps(spoke))
+    ok = spoke.get("ok") and m is not None
+    result = "VOICE_SELFTEST_OK" if ok else "VOICE_SELFTEST_FAIL"
+    print(result)
+    vdiag("SELFTEST_COMPLETE", result=result)
+    _write_log(
+        f"mic={json.dumps(engine.mic_available())}\n"
+        f"warm={json.dumps(warm)}\n"
+        f"whisper={json.dumps(out)}\n"
+        f"intent={m.intent.name if m else None}\n"
+        f"tts={json.dumps(spoke)}\n"
+        f"result={result}\n"
+    )
+    return 0 if ok else 1
+
+
 def main() -> int:
+    if "--whisper-minimal-test" in sys.argv:
+        return whisper_minimal_test()
+    if "--voice-selftest" in sys.argv:
+        return voice_selftest()
     t_launch = time.perf_counter()
     load_runtime_env()
     atexit.register(_stop_engine)
