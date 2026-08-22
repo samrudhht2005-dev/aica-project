@@ -10,13 +10,13 @@ from typing import Any, Optional
 
 from desktop.launcher.voice_engine import ModernVoiceEngine
 
-_engine: Optional[ModernVoiceEngine] = None
+_engine: Optional[DesktopVoiceBridge] = None
 
 
-def get_voice_bridge() -> ModernVoiceEngine:
+def get_voice_bridge() -> DesktopVoiceBridge:
     global _engine
     if _engine is None:
-        _engine = ModernVoiceEngine()
+        _engine = DesktopVoiceBridge()
     return _engine
 
 
@@ -25,7 +25,7 @@ class DesktopVoiceBridge:
 
     def __init__(self) -> None:
         self._window = None
-        self._core = get_voice_bridge()
+        self._core = ModernVoiceEngine()
 
     def attach_window(self, window) -> None:
         self._window = window
