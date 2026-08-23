@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/samrudhht2005-dev/aica-project/desktop/config/update_manifest.schema.json",
+  "title": "AICA Update Manifest",
+  "description": "GitHub Releases update manifest for AICA desktop auto-updater.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "published_at",
+    "installer",
+    "release_notes"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "description": "Semantic version of the release (must match installer and Git tag)."
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the release was published."
+    },
+    "channel": {
+      "type": "string",
+      "enum": ["stable", "beta", "prerelease"],
+      "default": "stable",
+      "description": "Release channel; clients on stable ignore non-stable unless opted in."
+    },
+    "minimum_supported_version": {
+      "type": ["string", "null"],
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$",
+      "description": "Oldest installed version allowed to upgrade directly; null means no floor."
+    },
+    "mandatory": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, client may eventually require update before continued use."
+    },
+    "release_notes": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short human-readable summary shown in the update UI."
+    },
+    "installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filename",
+        "url",
+        "sha256",
+        "size_bytes"
+      ],
+      "properties": {
+        "filename": {
+          "type": "string",
+          "pattern": "^AICA_Setup_(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?\\.exe$",
+          "description": "Expected Inno Setup installer filename."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "HTTPS download URL for the official GitHub Release asset."
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$",
+          "description": "Lowercase hex SHA-256 of the installer file."
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Installer file size in bytes."
+        }
+      }
+    }
+  }
+}

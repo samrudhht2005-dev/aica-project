@@ -13,7 +13,8 @@ from pathlib import Path
 
 
 APP_NAME = "AICA"
-APP_VERSION = os.environ.get("AICA_VERSION", "1.0.2")
+# Dev fallback only — packaged/desktop releases resolve version from version.json via app_release_info().
+APP_VERSION = os.environ.get("AICA_VERSION", "0.0.0-dev")
 APP_WINDOW_TITLE = "AICA — Financial Intelligence"
 
 

@@ -42,12 +42,21 @@
         <p class="text-muted small mt-3 mb-0">Password is never shown. Organisation GST and address are under Organisation settings.</p>
     </div>
 
-    <div class="modern-card mt-3" style="max-width: 560px;">
-        <h2 class="h6 mb-2">About AICA</h2>
+    <div class="modern-card mt-3" style="max-width: 560px;" id="aicaAboutCard">
+        <h2 class="h6 mb-2" data-i18n="update.about">About AICA</h2>
         <p class="mb-1"><strong>AICA</strong></p>
-        <p class="mb-1 text-muted small">Version {{ app_version or "1.0.1" }}</p>
+        <p class="mb-1 text-muted small">
+            <span data-i18n="update.currentVersion">Current version</span>:
+            <span id="aicaProfileCurrentVersion">v{{ app_version or "—" }}</span>
+        </p>
+        <p class="mb-1 text-muted small" id="aicaProfileLatestRow" hidden>
+            <span data-i18n="update.latestVersion">Latest version</span>:
+            <span id="aicaProfileLatestVersion"></span>
+        </p>
         {% if app_build %}<p class="mb-1 text-muted small">Build {{ app_build }}</p>{% endif %}
-        {% if app_channel %}<p class="mb-0 text-muted small">Channel {{ app_channel }}</p>{% endif %}
+        {% if app_channel %}<p class="mb-2 text-muted small">Channel {{ app_channel }}</p>{% endif %}
+        <button type="button" class="btn btn-outline-primary btn-sm" id="aicaCheckUpdatesBtn" data-i18n="update.check">Check for updates</button>
+        <p class="text-muted small mt-2 mb-0" id="aicaProfileUpdateStatus" aria-live="polite"></p>
     </div>
 </div>
 <script src="/static/explain.js"></script>

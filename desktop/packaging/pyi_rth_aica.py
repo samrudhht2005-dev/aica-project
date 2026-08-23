@@ -4,7 +4,7 @@ import sys
 from pathlib import Path
 
 os.environ.setdefault("AICA_DESKTOP", "1")
-os.environ.setdefault("AICA_VERSION", "1.0.2")
+# AICA_VERSION is set by build env / launcher / version.json — no hardcoded release version here.
 os.environ.setdefault("AICA_PERSONAL_WAKE", "1")
 
 if getattr(sys, "frozen", False):

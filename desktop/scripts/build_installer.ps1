@@ -1,28 +1,28 @@
 # Full desktop build: engine + launcher + Inno Setup installer → Desktop\AICA\
+# Version source of truth: desktop/config/version.json (never hardcode version here)
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
 
-$Version = "1.0.2"
-$env:AICA_VERSION = $Version
-$env:AICA_BUILD = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssK")
+. (Join-Path $PSScriptRoot "lib\aica_version.ps1")
 
-# Keep version.json build stamp in sync for About page
-$VersionJson = Join-Path $Root "desktop\config\version.json"
-if (Test-Path $VersionJson) {
-    $vj = Get-Content $VersionJson -Raw | ConvertFrom-Json
-    $vj.version = $Version
-    $vj.build = $env:AICA_BUILD
-    ($vj | ConvertTo-Json -Depth 6) | Set-Content -Encoding UTF8 $VersionJson
-}
+$buildInfo = Initialize-AicaBuildEnvironment -Root $Root -UpdateBuildStamp
+$Version = $buildInfo.Version
+$env:AICA_VERSION = $Version
+$env:AICA_BUILD = $buildInfo.Build
+
+Write-Host "==> AICA build version $Version (build $($env:AICA_BUILD)) from version.json"
 
 & (Join-Path $PSScriptRoot "build_engine.ps1")
 & (Join-Path $PSScriptRoot "build_launcher.ps1")
+& (Join-Path $PSScriptRoot "build_updater.ps1")
 
 $Engine = Join-Path $Root "dist\AICA.Engine\AICA.Engine.exe"
 $Launch = Join-Path $Root "dist\AICA.exe"
+$Updater = Join-Path $Root "dist\AICA.Updater.exe"
 if (-not (Test-Path $Engine)) { throw "Missing $Engine" }
 if (-not (Test-Path $Launch)) { throw "Missing $Launch" }
+if (-not (Test-Path $Updater)) { throw "Missing $Updater" }
 
 $Iscc = $null
 foreach ($c in @(
@@ -42,8 +42,8 @@ if (-not $Iscc) {
 }
 
 $Iss = Join-Path $Root "desktop\packaging\aica_setup.iss"
-Write-Host "==> Inno Setup: $Iscc"
-& $Iscc $Iss
+Write-Host "==> Inno Setup: $Iscc /DMyAppVersion=$Version"
+& $Iscc "/DMyAppVersion=$Version" $Iss
 $Setup = Join-Path $Root "dist\AICA_Setup_$Version.exe"
 if (-not (Test-Path $Setup)) { throw "Installer not produced at $Setup" }
 Write-Host "OK installer -> $Setup"

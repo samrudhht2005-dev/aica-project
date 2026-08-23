@@ -73,9 +73,22 @@ def install_webview2_permission_hook() -> None:
 
 def desktop_bootstrap_js() -> str:
     """Injected after page load: mark desktop, probe mic, start Hey Ira wake listener."""
-    return r"""
+    import json
+
+    try:
+        from backend.runtime_paths import app_release_info
+
+        version_js = json.dumps(str(app_release_info().get("version") or ""))
+    except Exception:
+        version_js = '""'
+
+    return (
+        """
     (function () {
       try { window.AICA_DESKTOP = true; } catch (e) {}
+      try { window.AICA_VERSION = """
+        + version_js
+        + """; } catch (e) {}
       try { window.AICA_VOICE_BACKEND = 'pending'; } catch (e) {}
       function unlockMic() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return Promise.resolve(false);
@@ -111,3 +124,4 @@ def desktop_bootstrap_js() -> str:
       });
     })();
     """
+    )

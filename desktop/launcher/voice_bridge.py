@@ -70,3 +70,104 @@ class DesktopVoiceBridge:
 
     def cancel_voice_listen(self) -> dict[str, Any]:
         return self._core.cancel_voice_listen()
+
+    def get_update_status(self) -> dict[str, Any]:
+        """Read-only update state for desktop UI (no network)."""
+        try:
+            from desktop.launcher.update_checker import get_update_status_dict
+
+            return get_update_status_dict()
+        except Exception as e:
+            return {
+                "status": "error",
+                "checking": False,
+                "update_available": False,
+                "installed_version": "",
+                "available_version": None,
+                "mandatory": False,
+                "release_notes": "",
+                "published_at": None,
+                "last_check_at": None,
+                "from_cache": False,
+                "error": str(e),
+            }
+
+    def check_for_updates_now(self) -> dict[str, Any]:
+        """Trigger a fresh background manifest check (Profile manual action)."""
+        try:
+            from desktop.launcher.update_checker import (
+                force_refresh_update_check,
+                get_update_status_dict,
+            )
+
+            scheduled = force_refresh_update_check(delay_s=0.0)
+            status = get_update_status_dict()
+            return {
+                "ok": scheduled,
+                "checking": True if scheduled else status.get("checking", False),
+                "already_in_progress": not scheduled,
+                "status": status,
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "checking": False,
+                "already_in_progress": False,
+                "error": str(e),
+            }
+
+    def start_update_download(self) -> dict[str, Any]:
+        """Download and verify the available update installer (Phase 4)."""
+        try:
+            from desktop.launcher.update_download import start_update_download
+
+            return start_update_download()
+        except Exception as e:
+            return {
+                "ok": False,
+                "status": "error",
+                "error": "Download failed. Please try again later.",
+                "active": False,
+            }
+
+    def get_update_download_status(self) -> dict[str, Any]:
+        """Poll installer download progress (no network)."""
+        try:
+            from desktop.launcher.update_download import get_update_download_status_dict
+
+            return get_update_download_status_dict()
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "active": False,
+            }
+
+    def apply_staged_update(self) -> dict[str, Any]:
+        """Launch AICA.Updater.exe for a verified staged installer, then shut down."""
+        try:
+            from desktop.launcher.update_apply import apply_staged_update
+
+            return apply_staged_update()
+        except Exception:
+            return {
+                "ok": False,
+                "status": "error",
+                "error": "Unable to start the update. AICA will stay open.",
+                "updater_started": False,
+                "already_in_progress": False,
+            }
+
+    def get_update_apply_status(self) -> dict[str, Any]:
+        """Poll update-apply handoff status (no filesystem paths)."""
+        try:
+            from desktop.launcher.update_apply import get_apply_status_dict
+
+            return get_apply_status_dict()
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "active": False,
+                "updater_started": False,
+            }

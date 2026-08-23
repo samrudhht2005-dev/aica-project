@@ -178,6 +178,18 @@ def _stop_engine() -> None:
         pass
 
 
+def _engine_pid() -> int | None:
+    proc = _engine_proc
+    if proc is None:
+        return None
+    try:
+        if proc.poll() is None:
+            return int(proc.pid)
+    except Exception:
+        return None
+    return None
+
+
 def _show_error(message: str) -> None:
     try:
         import ctypes
@@ -542,6 +554,10 @@ def main() -> int:
         webview_user_data_dir,
     )
     from desktop.launcher.voice_bridge import get_voice_bridge
+    from desktop.launcher.update_apply import (
+        register_engine_pid_provider,
+        register_graceful_shutdown,
+    )
 
     # Remember Me / localStorage require a persistent WebView2 profile (not private_mode).
     install_webview2_permission_hook()
@@ -563,7 +579,37 @@ def main() -> int:
             voice.cancel_voice_listen()
         except Exception:
             pass
+        try:
+            core = getattr(voice, "_core", None)
+            if core is not None and hasattr(core, "dispose"):
+                core.dispose()
+        except Exception:
+            pass
         _stop_engine()
+
+    def _graceful_update_shutdown():
+        """Called after AICA.Updater.exe has successfully started (Phase 5)."""
+        try:
+            voice.cancel_voice_listen()
+        except Exception:
+            pass
+        try:
+            core = getattr(voice, "_core", None)
+            if core is not None and hasattr(core, "dispose"):
+                core.dispose()
+        except Exception:
+            pass
+        _stop_engine()
+        try:
+            window.destroy()
+        except Exception:
+            try:
+                os._exit(0)
+            except Exception:
+                pass
+
+    register_engine_pid_provider(_engine_pid)
+    register_graceful_shutdown(_graceful_update_shutdown)
 
     def _on_loaded():
         try:
@@ -581,6 +627,12 @@ def main() -> int:
         except Exception as e:
             logging = __import__("logging")
             logging.warning("Desktop IRA bootstrap JS failed: %s", e)
+        try:
+            from desktop.launcher.update_checker import schedule_background_update_check
+
+            schedule_background_update_check(delay_s=2.0)
+        except Exception:
+            pass
 
     try:
         window.events.closed += _on_closed

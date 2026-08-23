@@ -1,4 +1,4 @@
-# Build AICA.exe launcher (WebView2)
+# Build AICA.Updater.exe (Phase 5 apply helper — small, no WebView/voice)
 $ErrorActionPreference = "Stop"
 $Root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 Set-Location $Root
@@ -8,6 +8,8 @@ if (-not $env:AICA_VERSION) {
     $info = Initialize-AicaBuildEnvironment -Root $Root
     $env:AICA_VERSION = $info.Version
     if ($info.Build) { $env:AICA_BUILD = $info.Build }
+} else {
+    Sync-AicaFileVersionInfo -Version $env:AICA_VERSION -Root $Root | Out-Null
 }
 
 $Pip = Join-Path $Root "venv\Scripts\pip.exe"
@@ -15,17 +17,17 @@ $PyI = Join-Path $Root "venv\Scripts\pyinstaller.exe"
 
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-& $Pip install -q "pyinstaller>=6.0" "pywebview>=5.0" 2>&1 | Out-Null
+& $Pip install -q "pyinstaller>=6.0" 2>&1 | Out-Null
 $ErrorActionPreference = $prevEap
 if ($LASTEXITCODE -ne 0) { throw "pip install failed (exit $LASTEXITCODE)" }
 
-Write-Host "==> Cleaning previous launcher build"
-Remove-Item -Force (Join-Path $Root "dist\AICA.exe") -ErrorAction SilentlyContinue
-Remove-Item -Recurse -Force (Join-Path $Root "build\AICA") -ErrorAction SilentlyContinue
+Write-Host "==> Cleaning previous updater build"
+Remove-Item -Force (Join-Path $Root "dist\AICA.Updater.exe") -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force (Join-Path $Root "build\AICA.Updater") -ErrorAction SilentlyContinue
 
-$Spec = Join-Path $Root "desktop\packaging\aica_launcher.spec"
+$Spec = Join-Path $Root "desktop\packaging\aica_updater.spec"
 & $PyI $Spec --noconfirm --distpath (Join-Path $Root "dist") --workpath (Join-Path $Root "build")
 
-$Out = Join-Path $Root "dist\AICA.exe"
-if (-not (Test-Path $Out)) { throw "Launcher build failed" }
-Write-Host "OK launcher -> $Out"
+$Out = Join-Path $Root "dist\AICA.Updater.exe"
+if (-not (Test-Path $Out)) { throw "Updater build failed" }
+Write-Host "OK updater -> $Out"

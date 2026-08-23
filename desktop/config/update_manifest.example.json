@@ -1,0 +1,15 @@
+{
+  "_comment": "Example only — generate real manifests with desktop/scripts/generate_update_manifest.ps1",
+  "version": "1.0.3",
+  "published_at": "2026-09-01T12:00:00+00:00",
+  "channel": "stable",
+  "minimum_supported_version": null,
+  "mandatory": false,
+  "release_notes": "Bug fixes and improvements.",
+  "installer": {
+    "filename": "AICA_Setup_1.0.3.exe",
+    "url": "https://github.com/samrudhht2005-dev/aica-project/releases/download/v1.0.3/AICA_Setup_1.0.3.exe",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "size_bytes": 0
+  }
+}

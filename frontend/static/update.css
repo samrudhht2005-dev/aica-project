@@ -1,0 +1,107 @@
+/* AICA desktop update notification (Phase 3 — read-only) */
+.aica-update-banner {
+    position: fixed;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1200;
+    width: min(520px, calc(100vw - 24px));
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    color: var(--text, #111);
+}
+
+.aica-update-banner[hidden] {
+    display: none !important;
+}
+
+.aica-update-banner-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+}
+
+.aica-update-banner-meta {
+    font-size: 0.82rem;
+    color: var(--muted, #666);
+    margin-bottom: 8px;
+}
+
+.aica-update-banner-notes {
+    font-size: 0.82rem;
+    max-height: 4.5em;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 10px;
+    color: var(--text-secondary, #444);
+}
+
+.aica-update-banner-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.aica-update-banner-actions .btn {
+    font-size: 0.82rem;
+    padding: 6px 12px;
+}
+
+.aica-update-install-msg {
+    font-size: 0.78rem;
+    color: var(--muted, #666);
+    margin-top: 6px;
+}
+
+.aica-update-progress-wrap {
+    margin: 8px 0 10px;
+}
+
+.aica-update-progress-label {
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+    color: var(--text-secondary, #444);
+}
+
+.aica-update-progress-track {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.aica-update-progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: var(--primary, #2563eb);
+    transition: width 0.25s ease;
+}
+
+.aica-update-progress-bar.indeterminate {
+    width: 40% !important;
+    animation: aica-update-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes aica-update-indeterminate {
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(320%); }
+}
+
+.aica-update-progress-detail {
+    font-size: 0.78rem;
+    color: var(--muted, #666);
+    margin-top: 6px;
+}
+
+.aica-update-ready-msg {
+    font-size: 0.82rem;
+    color: var(--text-secondary, #444);
+    margin: 8px 0 10px;
+    white-space: pre-wrap;
+}

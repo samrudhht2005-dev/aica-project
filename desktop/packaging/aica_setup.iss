@@ -1,9 +1,12 @@
 ; AICA Windows installer — Inno Setup 6+
 ; Installs/upgrades ONE canonical per-user app: %LOCALAPPDATA%\AICA\
 ; Same AppId across versions so future setups upgrade in place.
+; Version: pass at compile time via ISCC /DMyAppVersion=x.y.z (from desktop/config/version.json).
 
 #define MyAppName "AICA"
-#define MyAppVersion "1.0.2"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0-dev"
+#endif
 #define MyAppPublisher "AICA"
 #define MyAppURL "https://github.com/samrudhht2005-dev/aica-project"
 #define MyAppExeName "AICA.exe"
@@ -41,6 +44,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 ; Launcher
 Source: "..\..\dist\AICA.exe"; DestDir: "{app}"; Flags: ignoreversion
+; Updater helper (Phase 5 — applies staged verified installer after AICA exits)
+Source: "..\..\dist\AICA.Updater.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Engine onedir flattened beside launcher (AICA.Engine.exe + _internal)
 Source: "..\..\dist\AICA.Engine\AICA.Engine.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\dist\AICA.Engine\_internal\*"; DestDir: "{app}\_internal"; Flags: ignoreversion recursesubdirs createallsubdirs

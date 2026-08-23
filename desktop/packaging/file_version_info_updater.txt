@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # Auto-synced from desktop/config/version.json - do not edit manually.
-"""PyInstaller Windows version resource for AICA.exe"""
+# PyInstaller Windows version resource for AICA.Updater.exe
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=(1, 0, 3, 0),
@@ -18,11 +18,11 @@ VSVersionInfo(
         u'040904B0',
         [
           StringStruct(u'CompanyName', u'AICA'),
-          StringStruct(u'FileDescription', u'AICA - Financial Intelligence'),
+          StringStruct(u'FileDescription', u'AICA Updater'),
           StringStruct(u'FileVersion', u'1.0.3'),
-          StringStruct(u'InternalName', u'AICA'),
+          StringStruct(u'InternalName', u'AICA.Updater'),
           StringStruct(u'LegalCopyright', u'AICA'),
-          StringStruct(u'OriginalFilename', u'AICA.exe'),
+          StringStruct(u'OriginalFilename', u'AICA.Updater.exe'),
           StringStruct(u'ProductName', u'AICA'),
           StringStruct(u'ProductVersion', u'1.0.3'),
         ]
