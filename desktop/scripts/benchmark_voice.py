@@ -218,7 +218,7 @@ def get_modern_engine_info() -> dict[str, str]:
         wake_mode = f"error:{e}"
     return {
         "engine": "aica-voice-v2",
-        "recognizer": "faster-whisper-small.en-cpu-int8",
+        "recognizer": "faster-whisper-base.en-cpu-int8",
         "culture": "en",
         "wake_backend": wake_mode,
         "whisper_model": str(whisper_model_dir()),

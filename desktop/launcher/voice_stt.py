@@ -13,7 +13,7 @@ from desktop.launcher.voice_diag import vdiag
 from desktop.launcher.voice_log import vlog
 from desktop.launcher.voice_paths import faster_whisper_assets_dir, whisper_model_dir
 
-# Bias English assistant commands on short/noisy mic clips (small.en).
+# Bias English assistant commands on short/noisy mic clips (base.en).
 _EN_INITIAL_PROMPT = (
     "Hey Ira. Open expenses, sales, dashboard, inventory, billing, reports, and analytics. "
     "Take me to sales. Switch to POS or organization."
@@ -27,6 +27,10 @@ class WhisperSTT:
     def __init__(self) -> None:
         self._model = None
         self._model_lock = threading.Lock()
+        # Serializes ALL inference (wake verify + command). Never run two transcribes concurrently.
+        self._infer_lock = threading.Lock()
+        self._infer_idle = threading.Event()
+        self._infer_idle.set()
         self._load_error: str | None = None
         self._load_seconds: float | None = None
         self._model_path: str | None = None
@@ -48,12 +52,19 @@ class WhisperSTT:
     def load_seconds(self) -> float | None:
         return self._load_seconds
 
+    def wait_until_idle(self, timeout: float = 45.0) -> bool:
+        """Block until no transcription is in progress (cooperative)."""
+        return self._infer_idle.wait(timeout=timeout)
+
     def _configure_threads(self) -> int:
-        threads = int(os.environ.get("AICA_WHISPER_THREADS", "0") or "0")
-        if getattr(sys, "frozen", False):
-            threads = max(1, int(os.environ.get("AICA_WHISPER_THREADS", "1") or "1"))
-        elif threads <= 0:
-            threads = max(2, (os.cpu_count() or 4) - 1)
+        # Packaged default used to force 1 thread (via pyi_rth); that made command STT
+        # ~14–15s for ~2.8s clips. Cap at 4 to avoid thrashing on desktop CPUs.
+        raw = (os.environ.get("AICA_WHISPER_THREADS") or "").strip()
+        if raw:
+            threads = max(1, int(raw))
+        else:
+            n = os.cpu_count() or 4
+            threads = max(2, min(4, max(1, n - 1)))
         os.environ["OMP_NUM_THREADS"] = str(threads)
         os.environ["MKL_NUM_THREADS"] = str(threads)
         os.environ["OPENBLAS_NUM_THREADS"] = str(threads)
@@ -88,6 +99,9 @@ class WhisperSTT:
                 vdiag(
                     "WHISPER_LOAD_ENV",
                     threads=threads,
+                    compute_type="int8",
+                    device="cpu",
+                    model_name=model_path.name,
                     vad_asset=str(vad_asset),
                     vad_asset_exists=vad_asset.is_file(),
                     cwd=os.getcwd(),
@@ -102,12 +116,13 @@ class WhisperSTT:
                 self._load_seconds = time.perf_counter() - t0
                 vdiag("WHISPER_LOAD_RETURN", seconds=round(self._load_seconds, 3))
                 vlog("whisper_loaded", path=str(model_path), seconds=round(self._load_seconds, 2))
-                self.warm_transcribe()
             except Exception as e:
                 self._load_error = str(e)
                 vdiag("WHISPER_LOAD_ERROR", error=str(e))
                 vlog("whisper_load_failed", error=str(e))
                 raise
+        # Warm outside load lock; uses inference lock.
+        self.warm_transcribe()
 
     @staticmethod
     def pcm16_to_float(pcm: bytes) -> np.ndarray:
@@ -119,20 +134,31 @@ class WhisperSTT:
         if self._warmed or self._model is None:
             return
         silence = (np.zeros(1600, dtype=np.float32) * 0.001).astype(np.float32)
-        try:
-            list(
-                self._model.transcribe(
-                    silence,
-                    language="en",
-                    beam_size=1,
-                    vad_filter=False,
-                    condition_on_previous_text=False,
-                )[0]
-            )
-            self._warmed = True
-            vdiag("WHISPER_WARM_OK")
-        except Exception as e:
-            vdiag("WHISPER_WARM_ERROR", error=str(e))
+        t_wait = time.perf_counter()
+        vdiag("WHISPER_LOCK_WAIT", context="warm")
+        with self._infer_lock:
+            self._infer_idle.clear()
+            try:
+                vdiag(
+                    "WHISPER_LOCK_ACQUIRED",
+                    context="warm",
+                    wait_ms=round((time.perf_counter() - t_wait) * 1000, 1),
+                )
+                list(
+                    self._model.transcribe(
+                        silence,
+                        language="en",
+                        beam_size=1,
+                        vad_filter=False,
+                        condition_on_previous_text=False,
+                    )[0]
+                )
+                self._warmed = True
+                vdiag("WHISPER_WARM_OK")
+            except Exception as e:
+                vdiag("WHISPER_WARM_ERROR", error=str(e))
+            finally:
+                self._infer_idle.set()
 
     def transcribe_pcm(
         self,
@@ -142,6 +168,7 @@ class WhisperSTT:
         vad_filter: bool | None = None,
         use_cache: bool = True,
         normalize: bool = True,
+        context: str = "command",
     ) -> dict[str, Any]:
         self.ensure_loaded()
         if not pcm:
@@ -152,7 +179,7 @@ class WhisperSTT:
             cached = dict(self._pcm_cache[cache_key])
             cached["latency_ms"] = 0.0
             cached["cached"] = True
-            vdiag("WHISPER_TRANSCRIBE_CACHE_HIT", pcm_bytes=len(pcm))
+            vdiag("WHISPER_TRANSCRIBE_CACHE_HIT", pcm_bytes=len(pcm), context=context)
             return cached
 
         if vad_filter is None:
@@ -169,76 +196,99 @@ class WhisperSTT:
         samples = len(audio)
         duration_s = round(samples / 16000.0, 3)
         beam_size = max(1, int(os.environ.get("AICA_WHISPER_BEAM_SIZE", "3") or "3"))
-        vdiag(
-            "WHISPER_TRANSCRIBE_START",
-            pcm_bytes=len(pcm),
-            samples=samples,
-            duration_s=duration_s,
-            model_path=self._model_path,
-            vad_filter=vad_filter,
-            beam_size=beam_size,
-        )
-        t0 = time.perf_counter()
-        try:
-            segments, info = self._model.transcribe(
-                audio,
-                language=language,
-                task="transcribe",
-                beam_size=beam_size,
-                best_of=1,
-                vad_filter=vad_filter,
-                condition_on_previous_text=False,
-                initial_prompt=_EN_INITIAL_PROMPT,
-                temperature=0.0,
-            )
-            vdiag("WHISPER_TRANSCRIBE_GENERATOR", elapsed_ms=round((time.perf_counter() - t0) * 1000, 1))
-        except Exception as e:
-            vdiag("WHISPER_TRANSCRIBE_ERROR", error=str(e))
-            raise
 
-        parts: list[str] = []
-        seg_out: list[dict[str, Any]] = []
-        avg_logprob = []
-        seg_count = 0
-        for seg in segments:
-            seg_count += 1
-            t = (seg.text or "").strip()
-            if t:
-                parts.append(t)
-            seg_out.append(
-                {
-                    "text": t,
-                    "start": seg.start,
-                    "end": seg.end,
-                    "avg_logprob": getattr(seg, "avg_logprob", None),
+        t_wait = time.perf_counter()
+        vdiag("WHISPER_LOCK_WAIT", context=context, thread=threading.current_thread().name)
+        with self._infer_lock:
+            self._infer_idle.clear()
+            try:
+                wait_ms = (time.perf_counter() - t_wait) * 1000.0
+                vdiag(
+                    "WHISPER_LOCK_ACQUIRED",
+                    context=context,
+                    wait_ms=round(wait_ms, 1),
+                    thread=threading.current_thread().name,
+                )
+                vdiag(
+                    "WHISPER_TRANSCRIBE_START",
+                    pcm_bytes=len(pcm),
+                    samples=samples,
+                    duration_s=duration_s,
+                    model_path=self._model_path,
+                    vad_filter=vad_filter,
+                    beam_size=beam_size,
+                    context=context,
+                )
+                t0 = time.perf_counter()
+                try:
+                    segments, info = self._model.transcribe(
+                        audio,
+                        language=language,
+                        task="transcribe",
+                        beam_size=beam_size,
+                        best_of=1,
+                        vad_filter=vad_filter,
+                        condition_on_previous_text=False,
+                        initial_prompt=_EN_INITIAL_PROMPT,
+                        temperature=0.0,
+                    )
+                    vdiag(
+                        "WHISPER_TRANSCRIBE_GENERATOR",
+                        elapsed_ms=round((time.perf_counter() - t0) * 1000, 1),
+                        context=context,
+                    )
+                except Exception as e:
+                    vdiag("WHISPER_TRANSCRIBE_ERROR", error=str(e), context=context)
+                    raise
+
+                # Fully consume generator while still holding the lock.
+                parts: list[str] = []
+                seg_out: list[dict[str, Any]] = []
+                avg_logprob = []
+                seg_count = 0
+                for seg in segments:
+                    seg_count += 1
+                    t = (seg.text or "").strip()
+                    if t:
+                        parts.append(t)
+                    seg_out.append(
+                        {
+                            "text": t,
+                            "start": seg.start,
+                            "end": seg.end,
+                            "avg_logprob": getattr(seg, "avg_logprob", None),
+                        }
+                    )
+                    if getattr(seg, "avg_logprob", None) is not None:
+                        avg_logprob.append(float(seg.avg_logprob))
+
+                text = " ".join(parts).strip()
+                latency_ms = (time.perf_counter() - t0) * 1000.0
+                confidence = None
+                if avg_logprob:
+                    confidence = max(0.0, min(1.0, 1.0 + (sum(avg_logprob) / len(avg_logprob))))
+
+                vdiag(
+                    "WHISPER_TRANSCRIBE_RETURN",
+                    segments=seg_count,
+                    text=text,
+                    latency_ms=round(latency_ms, 1),
+                    language=getattr(info, "language", language),
+                    context=context,
+                )
+                vdiag("WHISPER_TRANSCRIBE_FINISHED", context=context, latency_ms=round(latency_ms, 1))
+                result = {
+                    "text": text,
+                    "confidence": confidence,
+                    "latency_ms": latency_ms,
+                    "language": getattr(info, "language", language),
+                    "segments": seg_out,
+                    "cached": False,
                 }
-            )
-            if getattr(seg, "avg_logprob", None) is not None:
-                avg_logprob.append(float(seg.avg_logprob))
-
-        text = " ".join(parts).strip()
-        latency_ms = (time.perf_counter() - t0) * 1000.0
-        confidence = None
-        if avg_logprob:
-            confidence = max(0.0, min(1.0, 1.0 + (sum(avg_logprob) / len(avg_logprob))))
-
-        vdiag(
-            "WHISPER_TRANSCRIBE_RETURN",
-            segments=seg_count,
-            text=text,
-            latency_ms=round(latency_ms, 1),
-            language=getattr(info, "language", language),
-        )
-        result = {
-            "text": text,
-            "confidence": confidence,
-            "latency_ms": latency_ms,
-            "language": getattr(info, "language", language),
-            "segments": seg_out,
-            "cached": False,
-        }
-        if cache_key is not None:
-            self._pcm_cache[cache_key] = dict(result)
-            if len(self._pcm_cache) > 8:
-                self._pcm_cache.pop(next(iter(self._pcm_cache)))
-        return result
+                if cache_key is not None:
+                    self._pcm_cache[cache_key] = dict(result)
+                    if len(self._pcm_cache) > 8:
+                        self._pcm_cache.pop(next(iter(self._pcm_cache)))
+                return result
+            finally:
+                self._infer_idle.set()

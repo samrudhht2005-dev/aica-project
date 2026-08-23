@@ -188,14 +188,16 @@ def voice_models_dir() -> Path:
 
 
 def whisper_model_dir() -> Path:
+    """Prefer faster-whisper base.en (production). Explicit override via AICA_WHISPER_MODEL_DIR."""
     explicit = os.environ.get("AICA_WHISPER_MODEL_DIR")
     if explicit:
         return Path(explicit)
-    for name in ("whisper-small.en", "small.en"):
+    # Production model: base.en. Do not fall back to small.en (would silently undo the speed cut).
+    for name in ("whisper-base.en", "base.en"):
         p = voice_models_dir() / name
         if (p / "model.bin").is_file() or (p / "config.json").is_file():
             return p
-    return voice_models_dir() / "whisper-small.en"
+    return voice_models_dir() / "whisper-base.en"
 
 
 def wake_model_path() -> Path:
@@ -203,6 +205,24 @@ def wake_model_path() -> Path:
     if explicit:
         return Path(explicit)
     return voice_models_dir() / "hey_ira.onnx"
+
+
+def personal_wake_npz_path() -> Path:
+    """User-specific wake profile — AppData only, never bundled in AICA.exe."""
+    return _persistent_voice_models_dir() / "personal_hey_ira_embeddings.npz"
+
+
+def personal_wake_meta_path() -> Path:
+    return _persistent_voice_models_dir() / "personal_hey_ira.json"
+
+
+def hard_neg_wake_npz_path() -> Path:
+    """Targeted hard-negative wake embeddings — AppData only, never bundled."""
+    return _persistent_voice_models_dir() / "personal_wake_hard_neg_embeddings.npz"
+
+
+def hard_neg_wake_meta_path() -> Path:
+    return _persistent_voice_models_dir() / "personal_wake_hard_neg.json"
 
 
 def oww_resource_dir() -> Path:

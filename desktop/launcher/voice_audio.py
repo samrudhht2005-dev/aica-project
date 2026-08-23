@@ -82,11 +82,20 @@ class MicCapture:
         pre_roll_ms: int = 300,
         vad_aggressiveness: int = 1,
         min_utterance_ms: int = 2800,
+        pre_speech_timeout_ms: int = 6000,
         on_frame: Callable[[bytes], None] | None = None,
         stop_check: Callable[[], bool] | None = None,
     ) -> bytes:
+        """
+        Capture one utterance.
+
+        States:
+          WAITING_FOR_SPEECH — ring-buffer only; initial silence is NOT end-of-speech.
+          RECORDING — after first VAD speech; post-speech silence ends capture.
+        """
         import sounddevice as sd
 
+        pre_speech_ms = max(2000, int(pre_speech_timeout_ms or 6000))
         vdiag(
             "MIC_CAPTURE_START",
             max_seconds=max_seconds,
@@ -94,6 +103,7 @@ class MicCapture:
             pre_roll_ms=pre_roll_ms,
             vad_aggressiveness=vad_aggressiveness,
             min_utterance_ms=min_utterance_ms,
+            pre_speech_timeout_ms=pre_speech_ms,
         )
         t_capture0 = time.perf_counter()
         vad = VoiceActivityDetector(aggressiveness=vad_aggressiveness)
@@ -108,22 +118,26 @@ class MicCapture:
         stopped = threading.Event()
         vad_started = False
         vad_ended = False
+        pre_speech_timeout = False
+        frames_received = 0
 
         def callback(indata, frames, time_info, status):  # noqa: ARG001
-            nonlocal silence_frames, heard_speech, vad_started, vad_ended
+            nonlocal silence_frames, heard_speech, vad_started, vad_ended, frames_received
             if stop_check and stop_check():
                 stopped.set()
                 raise sd.CallbackStop()
             pcm = (indata[:, 0] * 32767).astype(np.int16).tobytes()
+            frames_received += 1
             if on_frame:
                 on_frame(pcm)
             speech = vad.is_speech(pcm)
             if not heard_speech:
+                # WAITING_FOR_SPEECH — do not treat silence as end-of-utterance.
                 ring.append(pcm)
                 if speech:
                     heard_speech = True
                     vad_started = True
-                    vdiag("VAD_START")
+                    vdiag("VAD_START", frames_received=frames_received)
                     voiced.extend(ring)
                     ring.clear()
                     silence_frames = 0
@@ -158,6 +172,15 @@ class MicCapture:
                     while not stopped.is_set():
                         if stop_check and stop_check():
                             break
+                        elapsed_ms = (time.time() - t0) * 1000.0
+                        if not heard_speech and elapsed_ms >= pre_speech_ms:
+                            pre_speech_timeout = True
+                            vdiag(
+                                "PRE_SPEECH_TIMEOUT",
+                                elapsed_ms=round(elapsed_ms, 1),
+                                frames_received=frames_received,
+                            )
+                            break
                         if time.time() - t0 > max_seconds:
                             break
                         time.sleep(FRAME_MS / 1000.0)
@@ -179,6 +202,8 @@ class MicCapture:
             vad_started=vad_started,
             vad_ended=vad_ended,
             heard_speech=heard_speech,
+            pre_speech_timeout=pre_speech_timeout,
+            frames_received=frames_received,
         )
         return pcm
 
@@ -190,19 +215,32 @@ class MicCapture:
     ) -> None:
         import sounddevice as sd
 
+        frames_received = 0
+        last_heartbeat = time.time()
+        vdiag("MIC_STREAM_START")
+
         def callback(indata, frames, time_info, status):  # noqa: ARG001
+            nonlocal frames_received, last_heartbeat
             if stop_check():
                 raise sd.CallbackStop()
             pcm = (indata[:, 0] * 32767).astype(np.int16).tobytes()
+            frames_received += 1
+            now = time.time()
+            if now - last_heartbeat >= 5.0:
+                vdiag("MIC_STREAM_FRAMES", frames_received=frames_received)
+                last_heartbeat = now
             frame_callback(pcm)
 
         with self._lock:
-            with sd.InputStream(
-                samplerate=SAMPLE_RATE,
-                channels=1,
-                dtype="float32",
-                blocksize=FRAME_SAMPLES,
-                callback=callback,
-            ):
-                while not stop_check():
-                    time.sleep(FRAME_MS / 1000.0)
+            try:
+                with sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=1,
+                    dtype="float32",
+                    blocksize=FRAME_SAMPLES,
+                    callback=callback,
+                ):
+                    while not stop_check():
+                        time.sleep(FRAME_MS / 1000.0)
+            finally:
+                vdiag("MIC_STREAM_END", frames_received=frames_received)

@@ -31,14 +31,26 @@ INTENTS: list[VoiceIntent] = [
     VoiceIntent("OPEN_EXPENSES", "/expenses", "Expenses", "Sure, opening your expenses."),
     VoiceIntent("OPEN_SALES", "/sales", "Sales", "Sure, opening sales."),
     VoiceIntent("OPEN_POS", "/pos", "POS", "Sure, switching you to POS."),
+    VoiceIntent("OPEN_POS_CHECKOUT", "/pos#checkout", "Checkout", "Sure, opening POS checkout."),
+    VoiceIntent("OPEN_POS_OVERVIEW", "/pos#overview", "Sales Overview", "Sure, opening sales overview."),
+    VoiceIntent("OPEN_POS_HISTORY", "/pos#history", "Sales History", "Sure, opening sales history."),
+    VoiceIntent("OPEN_INVOICES", "/pos#invoices", "Invoices", "Sure, opening invoices."),
+    VoiceIntent("OPEN_POS_PRODUCTS", "/pos#products", "Product Performance", "Sure, opening product performance."),
     VoiceIntent("OPEN_INVENTORY", "/warehouse", "Inventory", "Sure, opening inventory."),
-    VoiceIntent("OPEN_BILLING", "/pos", "POS", "Sure, opening the billing counter."),
+    VoiceIntent("OPEN_BILLING", "/pos#checkout", "Billing", "Sure, opening the billing counter."),
     VoiceIntent("OPEN_REPORTS", "/reports", "Reports", "Sure, opening reports."),
-    VoiceIntent("OPEN_ANALYTICS", "/sales", "Sales", "Sure, opening sales analytics."),
+    VoiceIntent("OPEN_ANALYTICS", "/sales", "Sales Analytics", "Sure, opening sales analytics."),
+    VoiceIntent("OPEN_POS_ANALYTICS", "/pos#analytics", "POS Analytics", "Sure, opening POS analytics."),
     VoiceIntent(
         "OPEN_ORGANIZATION",
-        "/organization",
+        "/",
         "Organization",
+        "Sure, switching to organization.",
+    ),
+    VoiceIntent(
+        "OPEN_ORGANIZATION_SETTINGS",
+        "/organization",
+        "Organization Settings",
         "Sure, opening organization settings.",
     ),
     VoiceIntent(
@@ -86,16 +98,66 @@ INTENT_PHRASES: dict[str, list[str]] = {
         "go to pos",
         "take me to pos",
         "point of sale",
-        "open checkout",
         "open scanner",
-        "billing counter",
-        "open the billing counter",
+    ],
+    "OPEN_POS_CHECKOUT": [
+        "open checkout",
+        "go to checkout",
+        "show checkout",
+        "take me to checkout",
+        "new sale",
+        "open new sale",
+    ],
+    "OPEN_POS_OVERVIEW": [
+        "open sales overview",
+        "go to sales overview",
+        "show sales overview",
+        "take me to sales overview",
+        "pos overview",
+        "open overview",
+    ],
+    "OPEN_POS_HISTORY": [
+        "open sales history",
+        "go to sales history",
+        "show sales history",
+        "take me to sales history",
+        "open history",
+        "show history",
+        "pos history",
+    ],
+    "OPEN_INVOICES": [
+        "open invoice",
+        "open invoices",
+        "go to invoice",
+        "go to invoices",
+        "show invoice",
+        "show invoices",
+        "take me to invoice",
+        "take me to invoices",
+        "open the invoices tab",
+        "show me the invoice section",
+        "show me invoices",
+        "show the invoices",
+        "invoices tab",
+        "invoice section",
+        "pos invoices",
+    ],
+    "OPEN_POS_PRODUCTS": [
+        "open product performance",
+        "show product performance",
+        "go to product performance",
+        "take me to product performance",
+        "open products",
+        "show products",
+        "pos products",
     ],
     "OPEN_BILLING": [
         "open billing",
         "go to billing",
         "billing counter",
         "open the billing counter",
+        "show billing",
+        "take me to billing",
     ],
     "OPEN_INVENTORY": [
         "open inventory",
@@ -112,21 +174,57 @@ INTENT_PHRASES: dict[str, list[str]] = {
         "take me to reports",
     ],
     "OPEN_ANALYTICS": [
-        "open analytics",
+        "open organization analytics",
+        "open organisation analytics",
+        "open sales analytics",
+        "organization analytics",
+        "organisation analytics",
         "sales analytics",
+        "show sales analytics",
+        "take me to sales analytics",
+        "go to sales analytics",
+        "show organization analytics",
+    ],
+    "OPEN_POS_ANALYTICS": [
+        "open pos analytics",
+        "go to pos analytics",
+        "show pos analytics",
+        "take me to pos analytics",
+        "pos analytics",
+        "open analytics",
         "show analytics",
         "take me to analytics",
-        "here are open analytics",
+        "go to analytics",
         "show me analytics",
+        "here are open analytics",
     ],
     "OPEN_ORGANIZATION": [
-        "open organization",
-        "open organisation",
         "switch to organization",
         "switch to organisation",
+        "open organization",
+        "open organisation",
+        "go to organization",
+        "go to organisation",
+        "take me to organization",
+        "take me to organisation",
+        "organization home",
+        "organisation home",
+        "organization dashboard",
+        "organisation dashboard",
+    ],
+    "OPEN_ORGANIZATION_SETTINGS": [
+        "open organization settings",
+        "open organisation settings",
+        "go to organization settings",
+        "go to organisation settings",
         "take me to organization settings",
         "take me to organisation settings",
+        "organization settings",
+        "organisation settings",
         "company settings",
+        "open settings",
+        "go to settings",
+        "show settings",
     ],
     "OPEN_INTERFACE": [
         "switch to organization interface",
@@ -143,6 +241,7 @@ WAKE_RE = re.compile(
     re.I,
 )
 
+_ASSISTANT_BLOCK = frozenset({"siri", "google", "alexa", "cortana", "bixby"})
 _WAKE_STARTERS = frozenset({"hey", "hay", "hi", "he"})
 _IRA_VARIANTS = ("ira", "aira", "aaira", "aida", "eira", "era", "eera", "ara", "eye ra", "i ra")
 
@@ -202,6 +301,8 @@ def _fuzzy_wake_match(text: str) -> bool:
     if not t:
         return False
     words = t.split()
+    if any(w in _ASSISTANT_BLOCK for w in words):
+        return False
     if words[0] not in _WAKE_STARTERS:
         return False
     if len(words) > 5:
@@ -236,17 +337,34 @@ def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
     if not norm:
         return None
 
+    mode = (ui_mode or "org").strip().lower()
+    if mode not in ("pos", "org"):
+        mode = "org"
+
     best: IntentMatch | None = None
 
     for intent_name, phrases in INTENT_PHRASES.items():
         intent = _intent_by_name(intent_name)
         if not intent:
             continue
-        # POS mode: analytics/sales may route to pos overview — keep /sales for org
+        # Context-sensitive destinations.
         path = intent.path
-        if ui_mode == "pos" and intent_name == "OPEN_ANALYTICS":
+        speak = intent.speak
+        label = intent.label
+        if intent_name == "OPEN_POS_ANALYTICS":
+            # Bare "open analytics" follows UI mode; explicit POS phrases always POS.
+            if mode != "pos" and not re.search(r"\bpos\b", norm):
+                continue
+        if intent_name == "OPEN_ANALYTICS":
+            # Org/sales analytics only for explicit org/sales phrasing, or when in org mode
+            # for leftover matches (OPEN_POS_ANALYTICS skipped in org for bare "analytics").
+            pass
+        if mode == "pos" and intent_name == "OPEN_SALES":
             path = "/pos#overview"
-            intent = VoiceIntent(intent.name, path, intent.label, intent.speak)
+            speak = "Sure, opening sales overview."
+            label = "Sales Overview"
+
+        intent = VoiceIntent(intent.name, path, label, speak)
 
         for phrase in phrases:
             if norm == phrase:
@@ -267,12 +385,54 @@ def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
                 if not best or cand.score > best.score:
                     best = cand
 
-    # Prefer analytics when explicitly requested without a bare "sales" nav command.
-    if best and best.intent.name == "OPEN_SALES" and re.search(r"\banalytics\b", norm):
-        if not re.search(r"\bsales\b", norm):
+    # Explicit analytics routing (overrides fuzzy collisions).
+    if re.search(r"\banalytics\b", norm):
+        if re.search(r"\b(organization|organisation|sales)\b", norm) and not re.search(
+            r"\bpos\b", norm
+        ):
             alt = _intent_by_name("OPEN_ANALYTICS")
             if alt:
-                best = IntentMatch(intent=alt, score=max(best.score, 0.9), method="analytics_priority")
+                best = IntentMatch(intent=alt, score=1.0, method="org_analytics_priority")
+        elif re.search(r"\bpos\b", norm) or mode == "pos":
+            alt = _intent_by_name("OPEN_POS_ANALYTICS")
+            if alt:
+                best = IntentMatch(intent=alt, score=1.0, method="pos_analytics_priority")
+        else:
+            # Org mode bare "open analytics" → organization sales analytics page.
+            alt = _intent_by_name("OPEN_ANALYTICS")
+            if alt:
+                best = IntentMatch(intent=alt, score=1.0, method="org_analytics_default")
+
+    # Prefer analytics when OPEN_SALES matched but user said analytics.
+    if best and best.intent.name == "OPEN_SALES" and re.search(r"\banalytics\b", norm):
+        if mode == "pos" or re.search(r"\bpos\b", norm):
+            alt = _intent_by_name("OPEN_POS_ANALYTICS")
+        else:
+            alt = _intent_by_name("OPEN_ANALYTICS")
+        if alt:
+            best = IntentMatch(intent=alt, score=max(best.score, 0.95), method="analytics_priority")
+
+    # Invoice phrases must navigate to POS Invoices tab — never Gemini chat.
+    if re.search(r"\binvoices?\b", norm):
+        inv = _intent_by_name("OPEN_INVOICES")
+        if inv:
+            best = IntentMatch(intent=inv, score=1.0, method="invoice_priority")
+
+    # Settings phrases must never resolve to org dashboard.
+    if re.search(r"\bsettings?\b", norm) and re.search(
+        r"\b(organization|organisation|company)\b", norm
+    ):
+        alt = _intent_by_name("OPEN_ORGANIZATION_SETTINGS")
+        if alt:
+            best = IntentMatch(intent=alt, score=1.0, method="org_settings_priority")
+    elif re.search(r"\b(open|go to|show)\s+settings\b", norm) or norm in (
+        "open settings",
+        "go to settings",
+        "show settings",
+    ):
+        alt = _intent_by_name("OPEN_ORGANIZATION_SETTINGS")
+        if alt:
+            best = IntentMatch(intent=alt, score=1.0, method="settings_priority")
 
     return best
 

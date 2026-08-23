@@ -21,6 +21,7 @@ class NativeTTS:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._synth = None
+        self._speak_gen = 0
 
     def _ensure(self):
         if self._synth is not None:
@@ -47,23 +48,68 @@ class NativeTTS:
         return synth
 
     def speak(self, text: str) -> dict:
+        """Blocking speak (selftests / long replies). Lock is not held during Speak."""
         msg = plain_text_for_speech(text)
         if not msg:
             return {"ok": True, "spoken": ""}
         with self._lock:
+            synth = self._ensure()
+            gen = self._speak_gen
+        try:
+            synth.Speak(msg)
+            vlog("tts_spoke", chars=len(msg), gen=gen)
+            return {"ok": True, "spoken": msg}
+        except Exception as e:
+            vlog("tts_failed", error=str(e))
+            return {"ok": False, "error": str(e)}
+
+    def speak_async(self, text: str) -> dict:
+        """
+        Non-blocking short acknowledgement. Survives page navigation because it
+        runs in the launcher process. Cancellable via cancel() / SpeakAsyncCancelAll.
+        """
+        msg = plain_text_for_speech(text)
+        if not msg:
+            return {"ok": True, "spoken": "", "async": True}
+        with self._lock:
             try:
                 synth = self._ensure()
-                synth.Speak(msg)  # synchronous — blocks until done
-                vlog("tts_spoke", chars=len(msg))
-                return {"ok": True, "spoken": msg}
+                self._speak_gen += 1
+                gen = self._speak_gen
+                # Drop any prior async utterance, then queue this ack.
+                try:
+                    synth.SpeakAsyncCancelAll()
+                except Exception:
+                    pass
+                synth.SpeakAsync(msg)
+                vlog("tts_speak_async", chars=len(msg), gen=gen)
+                return {"ok": True, "spoken": msg, "async": True, "gen": gen}
             except Exception as e:
-                vlog("tts_failed", error=str(e))
+                vlog("tts_speak_async_failed", error=str(e))
+                return {"ok": False, "error": str(e), "async": True}
+
+    def cancel(self) -> dict:
+        """Stop any in-progress Speak/SpeakAsync immediately."""
+        with self._lock:
+            if self._synth is None:
+                return {"ok": True, "cancelled": False}
+            try:
+                self._speak_gen += 1
+                self._synth.SpeakAsyncCancelAll()
+                vlog("tts_cancelled", gen=self._speak_gen)
+                return {"ok": True, "cancelled": True}
+            except Exception as e:
+                vlog("tts_cancel_failed", error=str(e))
                 return {"ok": False, "error": str(e)}
 
     def dispose(self) -> None:
         with self._lock:
             if self._synth is not None:
                 try:
+                    try:
+                        self._synth.SpeakAsyncCancelAll()
+                    except Exception:
+                        pass
                     self._synth.Dispose()
                 except Exception:
                     pass

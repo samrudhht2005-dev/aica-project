@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
+import unicodedata
 from typing import Callable
 
-from desktop.launcher.voice_intents import detect_wake
 from desktop.launcher.voice_log import vlog
 
 # Strong embedding hit — fire immediately without Whisper.
@@ -13,6 +14,41 @@ STRONG_MARGIN_DEFAULT = 0.02
 AMBIGUOUS_MARGIN_LOW = -0.06
 # Only verify short utterances (standalone wake), not long nav commands.
 MAX_WHISPER_VERIFY_DURATION_S = float(os.environ.get("AICA_WAKE_VERIFY_MAX_S", "2.8"))
+
+_ASSISTANT_BLOCK = frozenset({"siri", "google", "alexa", "cortana", "bixby"})
+_WAKE_STARTERS = frozenset({"hey", "hay", "hi", "he"})
+_NAME_TOKENS = frozenset({"ira", "aira", "aaira", "aida", "eira", "era", "eera", "ara", "eye ra", "i ra"})
+
+
+def verify_wake_structured(text: str) -> bool:
+    """
+    Structured wake verification — Option A.
+
+    Valid: Hey/Hi + Ira/Aira/Era phonetic token.
+    Rejects: assistant names, standalone Aira/Ira, Hello Aira, fuzzy-only matches.
+    """
+    t = unicodedata.normalize("NFKC", text or "").lower().strip()
+    t = re.sub(r"[^\w\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    if not t:
+        return False
+    words = [w for w in t.split() if w]
+    if not words:
+        return False
+    if any(w in _ASSISTANT_BLOCK for w in words):
+        return False
+    if len(words) == 1 and words[0] in _NAME_TOKENS:
+        return False
+    if words[0] not in _WAKE_STARTERS:
+        return False
+    rest = " ".join(words[1:])
+    if any(tok in rest.split() for tok in _NAME_TOKENS):
+        return True
+    if any(tok.replace(" ", "") in rest.replace(" ", "") for tok in _NAME_TOKENS if " " in tok):
+        return True
+    if len(words) == 2 and words[0] in ("hey", "hi") and words[1] == "here":
+        return True
+    return False
 
 
 def is_standalone_here_mishear(text: str) -> bool:
@@ -28,7 +64,7 @@ def is_standalone_here_mishear(text: str) -> bool:
 
 
 def verify_wake_transcript(text: str, *, allow_here_mishear: bool = False) -> bool:
-    if detect_wake(text):
+    if verify_wake_structured(text):
         return True
     if allow_here_mishear and is_standalone_here_mishear(text):
         return True
@@ -40,6 +76,43 @@ def pcm_duration_s(pcm: bytes) -> float:
     return len(pcm) / (16000 * 2) if pcm else 0.0
 
 
+def try_wake_whisper_only(
+    pcm: bytes,
+    *,
+    margin: float,
+) -> tuple[bool, float, str, str]:
+    """
+    Stage-2 Whisper verify for an already-scored ambiguous clip.
+    Must only be called from a worker thread — never the audio callback.
+    """
+    if not pcm:
+        return False, 0.0, "none", ""
+    duration = pcm_duration_s(pcm)
+    if duration > MAX_WHISPER_VERIFY_DURATION_S:
+        return False, margin, "none", ""
+    if margin < AMBIGUOUS_MARGIN_LOW:
+        return False, margin, "none", ""
+    try:
+        from desktop.launcher.voice_stt import WhisperSTT
+
+        result = WhisperSTT.get().transcribe_pcm(pcm, context="wake_verify")
+        text = (result.get("text") or "").strip()
+        vlog(
+            "wake_whisper_verify",
+            margin=round(margin, 4),
+            text=text,
+            duration_s=round(duration, 2),
+            ms=result.get("latency_ms"),
+        )
+        if verify_wake_transcript(text, allow_here_mishear=False):
+            conf = result.get("confidence")
+            score = float(conf) if conf is not None else 0.75
+            return True, score, "whisper_verify", text
+    except Exception as e:
+        vlog("wake_whisper_verify_error", error=str(e))
+    return False, margin, "none", ""
+
+
 def try_wake_on_pcm(
     pcm: bytes,
     score_fn: Callable[[bytes], tuple[float, float, float]],
@@ -49,6 +122,9 @@ def try_wake_on_pcm(
     """
     Returns (fired, confidence_score, method, whisper_text).
     method: embedding | whisper_verify | none
+
+    Synchronous path for offline benchmark / diagnostics.
+    Live ambient wake uses EmbeddingWakeDetector async worker instead.
     """
     if not pcm:
         return False, 0.0, "none", ""
@@ -70,27 +146,7 @@ def try_wake_on_pcm(
     if margin < AMBIGUOUS_MARGIN_LOW:
         return False, margin, "none", ""
 
-    try:
-        from desktop.launcher.voice_stt import WhisperSTT
-
-        result = WhisperSTT.get().transcribe_pcm(pcm)
-        text = (result.get("text") or "").strip()
-        vlog(
-            "wake_whisper_verify",
-            margin=round(margin, 4),
-            text=text,
-            duration_s=round(duration, 2),
-            ms=result.get("latency_ms"),
-        )
-        if verify_wake_transcript(text, allow_here_mishear=True):
-            conf = result.get("confidence")
-            score = float(conf) if conf is not None else 0.75
-            return True, score, "whisper_verify", text
-    except Exception as e:
-        vlog("wake_whisper_verify_error", error=str(e))
-
-    return False, margin, "none", ""
-
+    return try_wake_whisper_only(pcm, margin=margin)
 
 def evaluate_wake_pcm(pcm: bytes) -> dict:
     """Benchmark + diagnostics — uses production WakeDetector backend."""

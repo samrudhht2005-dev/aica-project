@@ -36,7 +36,14 @@ def main() -> int:
     print("SELFTEST_EXIT", code2)
     print(_read_log("voice_selftest.log") or "(no selftest log)")
 
-    ok = code1 == 0 and code2 == 0
+    print("==> wake-selftest")
+    code3 = subprocess.call([str(LAUNCHER), "--wake-selftest"], env=env, cwd=str(LAUNCHER.parent))
+    wake_log = _read_log("wake_selftest.log")
+    print("WAKE_SELFTEST_EXIT", code3)
+    print(wake_log or "(no wake selftest log)")
+    wake_ok = code3 == 0 or "WAKE_SELFTEST_OK" in wake_log
+
+    ok = code1 == 0 and code2 == 0 and wake_ok
     print("VERIFY_OK" if ok else "VERIFY_FAIL")
     return 0 if ok else 1
 

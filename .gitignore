@@ -67,6 +67,22 @@ runs/
 # Duplicate / intermediate detector weights (production weight is vision/weights/)
 vision/best.pt
 
+# --- Personal wake profile (AppData derived embeddings — never commit/package) ---
+**/personal_hey_ira_embeddings.npz
+**/personal_hey_ira.json
+**/personal_wake_hard_neg_embeddings.npz
+**/personal_wake_hard_neg.json
+**/wake_specificity_evaluation.json
+**/wake_architecture_evaluation.json
+**/wake_phase2_validation.json
+**/wake_hard_negatives/
+
+desktop/voice/calibration/
+**/wake_calibration/
+**/wake_margin_diag/
+*.wav
+!desktop/voice/assets/**/*.wav
+
 # --- Logs / temp ---
 *.log
 .tmp/

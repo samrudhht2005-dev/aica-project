@@ -4,6 +4,7 @@
 *.pt
 *.npz
 model/
+**/whisper-base.en/
 **/whisper-small.en/
 **/openwakeword/
 hey_ira.json

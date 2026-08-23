@@ -4,8 +4,8 @@ Download / prepare voice models for AICA desktop (dev machine).
   python desktop/scripts/setup_voice_models.py
 
 Downloads:
-  - faster-whisper small.en  -> desktop/voice/models/whisper-small.en
-  - openWakeWord backbone    -> desktop/voice/models/openwakeword/ (optional OWW path)
+  - faster-whisper base.en  -> desktop/voice/models/whisper-base.en
+  - openWakeWord backbone   -> desktop/voice/models/openwakeword/ (optional OWW path)
 """
 from __future__ import annotations
 
@@ -19,17 +19,17 @@ from desktop.launcher.voice_paths import oww_resource_dir, voice_models_dir, whi
 
 
 def download_whisper() -> None:
-    dest = whisper_model_dir()
+    dest = voice_models_dir() / "whisper-base.en"
     if (dest / "model.bin").is_file():
         print("OK whisper already at", dest)
         return
-    print("Downloading faster-whisper small.en ->", dest)
+    print("Downloading faster-whisper base.en ->", dest)
     dest.mkdir(parents=True, exist_ok=True)
     try:
         from huggingface_hub import snapshot_download
 
         snapshot_download(
-            repo_id="Systran/faster-whisper-small.en",
+            repo_id="Systran/faster-whisper-base.en",
             local_dir=str(dest),
             local_dir_use_symlinks=False,
         )
@@ -37,7 +37,7 @@ def download_whisper() -> None:
         print("huggingface_hub failed, trying faster_whisper utility:", e)
         from faster_whisper import WhisperModel
 
-        WhisperModel("small.en", device="cpu", compute_type="int8", download_root=str(voice_models_dir()))
+        WhisperModel("base.en", device="cpu", compute_type="int8", download_root=str(voice_models_dir()))
     print("OK whisper")
 
 

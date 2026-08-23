@@ -45,6 +45,7 @@ class ModernVoiceEngine:
         self._command_stop = threading.Event()
         self._command_thread: threading.Thread | None = None
         self._init_error: str | None = None
+        self._ui_mode: str = "org"
 
     def _legacy_backend(self) -> LegacySpeechBackend:
         if self._legacy is None:
@@ -54,6 +55,11 @@ class ModernVoiceEngine:
     def _queue(self, event: str, payload: dict[str, Any]) -> None:
         with self._lock:
             self._events.append({"event": event, "payload": payload, "ts": time.time()})
+
+    def _drain_events(self) -> None:
+        """Drop stale events (e.g. wake 'ended') so they cannot abort a new command session."""
+        with self._lock:
+            self._events.clear()
 
     def poll_events(self) -> list[dict[str, Any]]:
         if _use_legacy():
@@ -96,6 +102,30 @@ class ModernVoiceEngine:
             return {"ok": False, "error": "native_tts_unavailable_in_legacy_mode"}
         return self._tts.speak(text)
 
+    def speak_response_async(self, text: str) -> dict[str, Any]:
+        """Fire-and-forget short ack (navigation). Does not block the UI thread."""
+        if _use_legacy():
+            return {"ok": False, "error": "native_tts_unavailable_in_legacy_mode"}
+        from desktop.launcher.voice_diag import vdiag
+
+        out = self._tts.speak_async(text)
+        vdiag(
+            "TTS_NAV_ACK",
+            ok=bool(out.get("ok")),
+            chars=len(str(text or "")),
+            async_mode=True,
+        )
+        return out
+
+    def cancel_speak(self) -> dict[str, Any]:
+        if _use_legacy():
+            return {"ok": True, "cancelled": False}
+        from desktop.launcher.voice_diag import vdiag
+
+        out = self._tts.cancel()
+        vdiag("TTS_CANCEL", cancelled=bool(out.get("cancelled")))
+        return out
+
     def warm_up(self) -> dict[str, Any]:
         """Lazy-load models (first mic use). Does not permanently disable modern voice."""
         if _use_legacy():
@@ -127,9 +157,36 @@ class ModernVoiceEngine:
             if self._mode == "wake":
                 self._mode = "idle"
 
-    def start_voice_listen(self, silence_ms: int = 1400, hold_ms: int = 20000) -> dict[str, Any]:
+    def _prepare_command_whisper(self, timeout_s: float = 45.0) -> None:
+        """
+        Pause new wake verifies, stop ambient mic, wait for in-flight wake Whisper
+        and any other transcription to finish before command capture/STT.
+        """
+        vdiag("COMMAND_LISTEN_START")
+        if self._wake is not None:
+            self._wake.pause_verify()
+        self._release_wake_mic()
+        vdiag("COMMAND_LISTEN_WAITING")
+        if self._wake is not None:
+            ok = self._wake.wait_verify_idle(timeout=timeout_s)
+            vdiag("COMMAND_LISTEN_WAKE_VERIFY_IDLE", ok=ok)
+        idle = WhisperSTT.get().wait_until_idle(timeout=timeout_s)
+        vdiag("COMMAND_LISTEN_WHISPER_IDLE", ok=idle)
+
+    def start_voice_listen(
+        self,
+        silence_ms: int = 1400,
+        hold_ms: int = 20000,
+        ui_mode: str = "org",
+    ) -> dict[str, Any]:
         if _use_legacy():
             return self._legacy_backend().start_voice_listen(silence_ms, hold_ms)
+
+        mode = (ui_mode or "org").strip().lower()
+        if mode not in ("pos", "org"):
+            mode = "org"
+        self._ui_mode = mode
+        vdiag("COMMAND_UI_MODE", ui_mode=self._ui_mode)
 
         warm = self.warm_up()
         if not warm.get("ok"):
@@ -141,8 +198,10 @@ class ModernVoiceEngine:
                 "backend": self.BACKEND_NAME,
             }
 
-        # Ambient wake owns the mic stream — release it before command capture.
-        self._release_wake_mic()
+        # Never run command Whisper concurrently with wake Whisper.
+        self._prepare_command_whisper()
+        # Drop wake teardown events so JS never treats them as an empty command result.
+        self._drain_events()
 
         with self._lock:
             if self._mode == "command" and self._command_thread and self._command_thread.is_alive():
@@ -153,29 +212,57 @@ class ModernVoiceEngine:
         # Align with successful modern live benchmark capture defaults.
         max_sec = min(14.0, max(8.0, hold_ms / 1000.0))
         silence = max(900, min(1800, int(silence_ms or 1400)))
+        pre_speech_ms = 6000
+        listen_ui_mode = self._ui_mode
 
         def run_command() -> None:
+            t_cmd0 = time.perf_counter()
+            t_capture_ms = 0.0
+            t_whisper_ms = 0.0
+            t_intent_ms = 0.0
             self._queue(
                 "started",
-                {"backend": self.BACKEND_NAME, "mode": "command", "silence_ms": silence},
+                {
+                    "backend": self.BACKEND_NAME,
+                    "mode": "command",
+                    "silence_ms": silence,
+                    "pre_speech_timeout_ms": pre_speech_ms,
+                },
             )
             try:
-                vdiag("COMMAND_CAPTURE_START", silence_ms=silence, max_seconds=max_sec)
+                vdiag(
+                    "COMMAND_CAPTURE_START",
+                    silence_ms=silence,
+                    max_seconds=max_sec,
+                    pre_speech_timeout_ms=pre_speech_ms,
+                )
+                t_cap0 = time.perf_counter()
                 pcm = self._mic.record_until_silence(
                     max_seconds=max_sec,
                     silence_ms=silence,
                     pre_roll_ms=300,
                     vad_aggressiveness=1,
                     min_utterance_ms=2800,
+                    pre_speech_timeout_ms=pre_speech_ms,
                     stop_check=self._command_stop.is_set,
                 )
+                t_capture_ms = (time.perf_counter() - t_cap0) * 1000.0
                 vdiag(
                     "COMMAND_CAPTURE_END",
                     pcm_bytes=len(pcm or b""),
                     duration_ms=round(len(pcm or b"") / 32.0, 1),
+                    wall_ms=round(t_capture_ms, 1),
                 )
                 if self._command_stop.is_set():
-                    self._queue("ended", {"transcript": "", "mode": "command", "backend": self.BACKEND_NAME})
+                    self._queue(
+                        "ended",
+                        {
+                            "transcript": "",
+                            "mode": "command",
+                            "backend": self.BACKEND_NAME,
+                            "error": "cancelled",
+                        },
+                    )
                     return
                 if not pcm:
                     vlog("command_empty_pcm")
@@ -185,16 +272,36 @@ class ModernVoiceEngine:
                             "transcript": "",
                             "mode": "command",
                             "backend": self.BACKEND_NAME,
-                            "error": "empty_capture",
+                            "error": "no_speech",
                         },
                     )
                     return
-                result = WhisperSTT.get().transcribe_pcm(pcm)
+                # Capture finished — UI should leave "Listening…" immediately.
+                self._queue(
+                    "processing",
+                    {
+                        "mode": "command",
+                        "backend": self.BACKEND_NAME,
+                        "pcm_bytes": len(pcm),
+                    },
+                )
+                vdiag("COMMAND_TRANSCRIBE_START", pcm_bytes=len(pcm))
+                t_w0 = time.perf_counter()
+                result = WhisperSTT.get().transcribe_pcm(pcm, context="command")
+                t_whisper_ms = (time.perf_counter() - t_w0) * 1000.0
+                vdiag(
+                    "COMMAND_TRANSCRIBE_RETURN",
+                    text=result.get("text") or "",
+                    latency_ms=result.get("latency_ms"),
+                    wall_ms=round(t_whisper_ms, 1),
+                )
                 text = result.get("text") or ""
                 if text:
                     self._queue("partial", {"text": text})
                     self._queue("final", {"text": text})
-                    intent = match_intent(text)
+                    t_i0 = time.perf_counter()
+                    intent = match_intent(text, ui_mode=listen_ui_mode)
+                    t_intent_ms = (time.perf_counter() - t_i0) * 1000.0
                     payload = {
                         "transcript": text,
                         "mode": "command",
@@ -207,8 +314,32 @@ class ModernVoiceEngine:
                         payload["intent"] = intent.intent.name
                         payload["intent_path"] = intent.intent.path
                         payload["intent_score"] = intent.score
+                    total_ms = (time.perf_counter() - t_cmd0) * 1000.0
+                    vdiag(
+                        "COMMAND_LATENCY_BREAKDOWN",
+                        total_ms=round(total_ms, 1),
+                        capture_ms=round(t_capture_ms, 1),
+                        whisper_ms=round(t_whisper_ms, 1),
+                        intent_ms=round(t_intent_ms, 1),
+                        other_ms=round(
+                            total_ms - t_capture_ms - t_whisper_ms - t_intent_ms, 1
+                        ),
+                        text=text,
+                        intent=(intent.intent.name if intent else None),
+                    )
                     self._queue("ended", payload)
                 else:
+                    total_ms = (time.perf_counter() - t_cmd0) * 1000.0
+                    vdiag(
+                        "COMMAND_LATENCY_BREAKDOWN",
+                        total_ms=round(total_ms, 1),
+                        capture_ms=round(t_capture_ms, 1),
+                        whisper_ms=round(t_whisper_ms, 1),
+                        intent_ms=0.0,
+                        other_ms=round(total_ms - t_capture_ms - t_whisper_ms, 1),
+                        text="",
+                        intent=None,
+                    )
                     self._queue(
                         "ended",
                         {
@@ -216,19 +347,34 @@ class ModernVoiceEngine:
                             "mode": "command",
                             "backend": self.BACKEND_NAME,
                             "pcm_bytes": len(pcm),
+                            "error": "unrecognized",
                         },
                     )
             except Exception as e:
                 vlog("command_listen_error", error=str(e))
                 self._queue("error", {"message": str(e), "backend": self.BACKEND_NAME})
-                self._queue("ended", {"transcript": "", "mode": "command", "backend": self.BACKEND_NAME})
+                self._queue(
+                    "ended",
+                    {
+                        "transcript": "",
+                        "mode": "command",
+                        "backend": self.BACKEND_NAME,
+                        "error": "listen_error",
+                    },
+                )
             finally:
                 with self._lock:
                     self._mode = "idle"
 
         self._command_thread = threading.Thread(target=run_command, daemon=True)
         self._command_thread.start()
-        return {"ok": True, "backend": self.BACKEND_NAME, "mode": "command"}
+        return {
+            "ok": True,
+            "backend": self.BACKEND_NAME,
+            "mode": "command",
+            "pre_speech_timeout_ms": pre_speech_ms,
+            "silence_ms": silence,
+        }
 
     def start_wake_listen(self) -> dict[str, Any]:
         if _use_legacy():
@@ -254,6 +400,8 @@ class ModernVoiceEngine:
             return {"ok": True, "already": True, "backend": self.BACKEND_NAME}
 
         self._wake_stop.clear()
+        self._wake.resume_verify()
+        self._drain_events()
         with self._lock:
             self._mode = "wake"
 
@@ -274,6 +422,8 @@ class ModernVoiceEngine:
                 vlog("wake_loop_error", error=str(e))
                 self._queue("error", {"message": str(e), "backend": self.BACKEND_NAME})
             finally:
+                # Allow in-flight verify to finish without enqueueing more.
+                self._wake.pause_verify()
                 self._queue("ended", {"transcript": "", "mode": "wake", "backend": self.BACKEND_NAME})
                 with self._lock:
                     if self._mode == "wake":
@@ -286,6 +436,8 @@ class ModernVoiceEngine:
     def stop_wake_listen(self) -> dict[str, Any]:
         if _use_legacy():
             return self._legacy_backend().stop_wake_listen()
+        if self._wake is not None:
+            self._wake.pause_verify()
         self._wake_stop.set()
         with self._lock:
             if self._mode == "wake":

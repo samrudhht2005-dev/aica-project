@@ -368,11 +368,125 @@ def voice_selftest() -> int:
     return 0 if ok else 1
 
 
+def wake_selftest() -> int:
+    """Packaged/source wake stack check — personal profile, padding, non-blocking verify."""
+    import inspect
+    import json
+    import wave
+
+    from desktop.launcher.voice_diag import vdiag
+    from desktop.launcher.voice_wake import WakeDetector
+    from desktop.launcher.voice_wake_embed import EmbeddingWakeDetector
+    from desktop.launcher.voice_wake_personal import resolve_hard_neg_wake, resolve_personal_wake
+    from desktop.launcher.voice_wake_preprocess import ensure_embeddable_pcm, MIN_EMBED_DURATION_S
+
+    def _write_log(body: str) -> None:
+        try:
+            from backend.runtime_paths import logs_dir
+
+            (logs_dir() / "wake_selftest.log").write_text(body, encoding="utf-8")
+        except Exception:
+            pass
+
+    print("AICA wake self-test")
+    vdiag("WAKE_SELFTEST_START", frozen=getattr(sys, "frozen", False))
+
+    det = WakeDetector()
+    det.ensure_loaded()
+    backend = det._mode
+    embed = det._backend if isinstance(det._backend, EmbeddingWakeDetector) else None
+
+    active, thr, profile = resolve_personal_wake()
+    hn_active, hard_neg = resolve_hard_neg_wake()
+    result: dict = {
+        "backend": backend,
+        "embedding_backend": backend == "embedding",
+        "personal_active": active,
+        "personal_threshold": thr,
+        "hard_neg_active": hn_active,
+        "hard_neg_samples": hard_neg.meta.get("sample_count") if hard_neg else None,
+        "margin_threshold": float(embed._margin_threshold) if embed else None,
+        "personal_enabled_on_detector": bool(embed and embed._personal_enabled),
+        "short_clip_padding_min_s": MIN_EMBED_DURATION_S,
+        "legacy_system_speech_wake": backend == "vad_whisper",
+    }
+
+    # Short-clip padding must succeed on a 0.72s synthetic buffer.
+    import numpy as np
+
+    short_pcm = (np.zeros(int(0.72 * 16000), dtype=np.int16) + 800).tobytes()
+    padded, how = ensure_embeddable_pcm(short_pcm)
+    result["short_clip_preprocess"] = how
+    result["short_clip_padded_s"] = round(len(padded) / 32000.0, 3)
+
+    if embed is not None:
+        w, n, m = embed._score_pcm(short_pcm)
+        result["short_clip_margin"] = round(m, 4)
+        # inspect.getsource fails under PyInstaller frozen; use structural checks instead.
+        if getattr(sys, "frozen", False):
+            result["whisper_on_callback"] = False
+            result["async_verify_thread"] = (
+                hasattr(embed, "_enqueue_whisper_verify")
+                and hasattr(embed, "_verify_thread")
+                and callable(getattr(embed, "pause_verify", None))
+            )
+            result["hard_neg_on_detector"] = getattr(embed, "_hard_neg", None) is not None
+        else:
+            maybe_src = inspect.getsource(embed._maybe_fire)
+            verify_src = inspect.getsource(embed._enqueue_whisper_verify)
+            result["whisper_on_callback"] = (
+                "WhisperSTT" in maybe_src or "transcribe_pcm" in maybe_src
+            )
+            result["async_verify_thread"] = "Thread(" in verify_src
+            result["hard_neg_on_detector"] = getattr(embed, "_hard_neg", None) is not None
+
+    # Score one calibration positive if available.
+    cal_pos = None
+    try:
+        from desktop.scripts.calibrate_wake_voice import calibration_root
+
+        sessions = sorted(calibration_root().glob("session_*"), key=lambda p: p.stat().st_mtime, reverse=True)
+        if sessions:
+            pos_dir = sessions[0] / "positive"
+            wavs = sorted(pos_dir.glob("*.wav"))
+            if wavs:
+                cal_pos = wavs[0]
+    except Exception:
+        pass
+
+    if cal_pos and embed is not None:
+        with wave.open(str(cal_pos), "rb") as wf:
+            pcm = wf.readframes(wf.getnframes())
+        w, n, m = embed._score_pcm(pcm)
+        result["calibration_sample"] = cal_pos.name
+        result["calibration_margin"] = round(m, 4)
+        result["calibration_would_fire"] = m >= float(embed._margin_threshold or 0.02)
+
+    ok = (
+        result["embedding_backend"]
+        and result["personal_active"]
+        and result["personal_enabled_on_detector"]
+        and result.get("hard_neg_active")
+        and result.get("margin_threshold") == 0.03
+        and result["short_clip_preprocess"] in ("padded_center", "as_is")
+        and not result.get("whisper_on_callback", True)
+        and result.get("async_verify_thread", False)
+    )
+    result["result"] = "WAKE_SELFTEST_OK" if ok else "WAKE_SELFTEST_FAIL"
+    body = json.dumps(result, indent=2)
+    print(body)
+    _write_log(body + "\n")
+    vdiag("WAKE_SELFTEST_DONE", ok=ok, result=result["result"])
+    return 0 if ok else 1
+
+
 def main() -> int:
     if "--whisper-minimal-test" in sys.argv:
         return whisper_minimal_test()
     if "--voice-selftest" in sys.argv:
         return voice_selftest()
+    if "--wake-selftest" in sys.argv:
+        return wake_selftest()
     t_launch = time.perf_counter()
     load_runtime_env()
     atexit.register(_stop_engine)
