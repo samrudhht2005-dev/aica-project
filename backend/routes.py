@@ -847,6 +847,9 @@ def get_camera_status():
         "camera_error": getattr(streamer, "camera_error", False),
         "camera_index": getattr(streamer, "camera_index", 0),
         "model_ready": summary.get("model_ready", False),
+        "preview_available": summary.get("preview_available", True),
+        "ai_detection_available": summary.get("ai_detection_available", False),
+        "ai_detection_error": summary.get("ai_detection_error"),
         "scan_state": summary.get("state"),
         "scan_message": summary.get("message"),
         "auto_add_enabled": summary.get("auto_add_enabled", False),
@@ -859,11 +862,18 @@ def set_camera_power(enabled: str = Form("false")):
     if streamer is None:
         return {"success": False, "error": "Camera streamer not initialized"}
     ok = streamer.set_camera_power(parse_form_bool(enabled))
+    summary = streamer.get_latest_summary() if hasattr(streamer, "get_latest_summary") else {}
     return {
         "success": ok,
         "camera_powered": streamer.camera_powered,
         "camera_error": getattr(streamer, "camera_error", False),
         "is_simulated": streamer.is_simulated,
+        "model_ready": summary.get("model_ready", False),
+        "preview_available": summary.get("preview_available", True),
+        "ai_detection_available": summary.get("ai_detection_available", False),
+        "ai_detection_error": summary.get("ai_detection_error"),
+        "scan_state": summary.get("state"),
+        "scan_message": summary.get("message"),
     }
 
 @router.get("/camera/detections")

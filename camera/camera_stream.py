@@ -13,6 +13,7 @@ class CameraStreamer:
     def __init__(self, detection_callback=None):
         # YOLO/Ultralytics is heavy — load lazily on first camera power-ON (not at FastAPI startup).
         self.detector = None
+        self._detector_error = None
         self._detector_lock = threading.Lock()
         self.detection_callback = detection_callback
 
@@ -48,16 +49,26 @@ class CameraStreamer:
         self.scan_dir = 1
 
     def _ensure_detector(self):
-        """Load YOLO only when POS camera is first powered on."""
+        """Load YOLO only when POS camera is first powered on. Returns None if unavailable."""
         if self.detector is not None:
             return self.detector
+        if self._detector_error is not None and self.detector is None:
+            # Previous load failed (e.g. missing torch in packaged desktop).
+            return None
         with self._detector_lock:
             if self.detector is not None:
                 return self.detector
+            if self._detector_error is not None:
+                return None
             logging.info("Lazy-loading YOLO product detector (first camera use)...")
             t0 = time.perf_counter()
-            from vision.yolo_inference import YOLOProductDetector
-            self.detector = YOLOProductDetector()
+            try:
+                from vision.yolo_inference import YOLOProductDetector
+                self.detector = YOLOProductDetector()
+            except Exception as e:
+                self._detector_error = str(e)
+                logging.exception("YOLO product detector unavailable: %s", e)
+                return None
             logging.info("YOLO product detector ready in %.2fs", time.perf_counter() - t0)
             return self.detector
 
@@ -86,7 +97,11 @@ class CameraStreamer:
             summary["detections"] = list(self.latest_summary.get("detections") or [])
             summary["accepted"] = list(self.latest_summary.get("accepted") or [])
             det = self.detector
-            summary["model_ready"] = bool(det and getattr(det, "model_ready", False))
+            model_ready = bool(det and getattr(det, "model_ready", False))
+            summary["model_ready"] = model_ready
+            summary["preview_available"] = True
+            summary["ai_detection_available"] = model_ready
+            summary["ai_detection_error"] = self._detector_error
             summary["auto_add_enabled"] = self.auto_add_enabled
             summary["camera_powered"] = self.camera_powered
             return summary
@@ -118,20 +133,9 @@ class CameraStreamer:
             print("Camera powered OFF — device released.")
             return True
 
-        # Power ON — load YOLO only now (keeps FastAPI/desktop startup fast)
-        try:
-            self._ensure_detector()
-        except Exception as e:
-            logging.exception("Failed to load YOLO detector")
-            self.camera_powered = False
-            self.camera_error = True
-            self._publish_summary({
-                "state": "error",
-                "message": f"Product detector failed to load: {e}",
-                "detections": [],
-                "accepted": [],
-            })
-            return False
+        # Power ON — try YOLO now (keeps FastAPI/desktop startup fast).
+        # Preview still works if the detector is missing (e.g. packaged build without torch).
+        detector = None if self.is_simulated else self._ensure_detector()
 
         self.camera_powered = True
         self.camera_error = False
@@ -171,9 +175,16 @@ class CameraStreamer:
                     "accepted": [],
                 })
                 return False
+            if detector is not None:
+                scan_msg = "Ready to scan — place a trained product in view."
+            else:
+                reason = self._detector_error or "product detector unavailable"
+                scan_msg = (
+                    f"Camera preview only — AI product detection unavailable ({reason})."
+                )
             self._publish_summary({
-                "state": "scanning",
-                "message": "Ready to scan — place a trained product in view.",
+                "state": "scanning" if detector is not None else "preview",
+                "message": scan_msg,
                 "detections": [],
                 "accepted": [],
             })
@@ -275,14 +286,25 @@ class CameraStreamer:
                             continue
 
                         detector = self._ensure_detector()
-                        detections = detector.detect(frame)
-                        summary = detector.summarize(detections)
-                        self._publish_summary(summary)
-                        frame = self._draw_detections(frame, detections)
+                        if detector is not None:
+                            detections = detector.detect(frame)
+                            summary = detector.summarize(detections)
+                            self._publish_summary(summary)
+                            frame = self._draw_detections(frame, detections)
 
-                        if self.auto_add_enabled and self.detection_callback:
-                            for det in summary.get("accepted") or []:
-                                self._handle_detection(det["label"], det["confidence"])
+                            if self.auto_add_enabled and self.detection_callback:
+                                for det in summary.get("accepted") or []:
+                                    self._handle_detection(det["label"], det["confidence"])
+                        else:
+                            reason = self._detector_error or "product detector unavailable"
+                            self._publish_summary({
+                                "state": "preview",
+                                "message": (
+                                    f"Camera live — AI product detection unavailable ({reason})."
+                                ),
+                                "detections": [],
+                                "accepted": [],
+                            })
                 except Exception as e:
                     logging.error("Error reading camera frame: %s", e)
                     self.set_camera_power(False)

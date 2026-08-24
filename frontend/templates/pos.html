@@ -1029,7 +1029,13 @@ async function changeScannerMode(mode) {
         if (res.ok) {
             const data = await res.json();
             const powered = document.getElementById('cameraPowerToggle')?.checked;
-            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, powered);
+            updateScannerModeUI(
+                data.is_simulated,
+                data.camera_error,
+                data.camera_index,
+                powered,
+                data.ai_detection_available
+            );
         }
     } catch (e) {
         console.error(e);
@@ -1044,14 +1050,20 @@ async function changeCameraIndex(index) {
         if (res.ok) {
             const data = await res.json();
             const powered = document.getElementById('cameraPowerToggle')?.checked;
-            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, powered);
+            updateScannerModeUI(
+                data.is_simulated,
+                data.camera_error,
+                data.camera_index,
+                powered,
+                data.ai_detection_available
+            );
         }
     } catch (e) {
         console.error(e);
     }
 }
 
-function updateScannerModeUI(isSimulated, cameraError, cameraIndex, cameraPowered) {
+function updateScannerModeUI(isSimulated, cameraError, cameraIndex, cameraPowered, aiDetectionAvailable) {
     const select = document.getElementById('scannerModeSelect');
     const badge = document.getElementById('cameraModeBadge');
     const indexSelect = document.getElementById('cameraIndexSelect');
@@ -1085,15 +1097,26 @@ function updateScannerModeUI(isSimulated, cameraError, cameraIndex, cameraPowere
         badge.innerText = 'Demo Simulation';
         badge.className = 'badge bg-info text-dark';
         if (indexSelect) indexSelect.style.display = 'none';
-        statusBadge.innerText = cameraError ? "Camera Error" : "Simulation Active";
+        statusBadge.innerText = cameraError ? "Camera Error" : "Camera ON · Demo";
         statusBadge.className = cameraError ? "badge bg-danger" : "badge bg-secondary";
     } else {
         select.value = 'physical';
-        badge.innerText = 'Scanning';
-        badge.className = 'badge bg-success';
+        badge.innerText = (aiDetectionAvailable === false) ? 'Preview only' : 'Scanning';
+        badge.className = (aiDetectionAvailable === false) ? 'badge bg-warning text-dark' : 'badge bg-success';
         if (indexSelect) indexSelect.style.display = 'inline-block';
-        statusBadge.innerText = cameraError ? "Camera Error" : "Camera ON";
-        statusBadge.className = cameraError ? "badge bg-danger" : "badge bg-success";
+        if (cameraError) {
+            statusBadge.innerText = "Camera Error";
+            statusBadge.className = "badge bg-danger";
+        } else if (aiDetectionAvailable === false) {
+            statusBadge.innerText = "Camera ON · AI detection unavailable";
+            statusBadge.className = "badge bg-warning text-dark";
+        } else if (aiDetectionAvailable === true) {
+            statusBadge.innerText = "Camera ON · AI detection ready";
+            statusBadge.className = "badge bg-success";
+        } else {
+            statusBadge.innerText = "Camera ON";
+            statusBadge.className = "badge bg-success";
+        }
     }
 }
 
@@ -1102,15 +1125,31 @@ async function toggleCameraPower(enabled) {
     formData.append('enabled', enabled ? 'true' : 'false');
     try {
         const res = await fetch('/camera/power', { method: 'POST', body: formData });
+        if (!res.ok) {
+            const t = document.getElementById('cameraPowerToggle');
+            if (t && enabled) t.checked = false;
+            updateScannerModeUI(false, true, undefined, false, false);
+            alert('Could not turn the camera on. Check the device or try another index.');
+            return;
+        }
         const data = await res.json();
-        updateScannerModeUI(data.is_simulated, data.camera_error, undefined, data.camera_powered);
+        updateScannerModeUI(
+            data.is_simulated,
+            data.camera_error,
+            undefined,
+            data.camera_powered,
+            data.ai_detection_available
+        );
         if (!data.success && enabled) {
             const t = document.getElementById('cameraPowerToggle');
             if (t) t.checked = false;
-            alert('Could not turn the camera on. Check the device or try another index.');
+            alert(data.scan_message || 'Could not turn the camera on. Check the device or try another index.');
         }
     } catch (e) {
         console.error(e);
+        const t = document.getElementById('cameraPowerToggle');
+        if (t && enabled) t.checked = false;
+        updateScannerModeUI(false, true, undefined, false, false);
     }
 }
 
@@ -1128,7 +1167,13 @@ async function checkCameraStatus() {
         const res = await fetch('/camera/status');
         if (res.ok) {
             const data = await res.json();
-            updateScannerModeUI(data.is_simulated, data.camera_error, data.camera_index, data.camera_powered);
+            updateScannerModeUI(
+                data.is_simulated,
+                data.camera_error,
+                data.camera_index,
+                data.camera_powered,
+                data.ai_detection_available
+            );
         }
     } catch (e) {
         console.error(e);

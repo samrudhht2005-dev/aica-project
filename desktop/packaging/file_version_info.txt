@@ -3,8 +3,8 @@
 """PyInstaller Windows version resource for AICA.exe"""
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 5, 0),
-    prodvers=(1, 0, 5, 0),
+    filevers=(1, 0, 6, 0),
+    prodvers=(1, 0, 6, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -19,12 +19,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'AICA'),
           StringStruct(u'FileDescription', u'AICA - Financial Intelligence'),
-          StringStruct(u'FileVersion', u'1.0.5'),
+          StringStruct(u'FileVersion', u'1.0.6'),
           StringStruct(u'InternalName', u'AICA'),
           StringStruct(u'LegalCopyright', u'AICA'),
           StringStruct(u'OriginalFilename', u'AICA.exe'),
           StringStruct(u'ProductName', u'AICA'),
-          StringStruct(u'ProductVersion', u'1.0.5'),
+          StringStruct(u'ProductVersion', u'1.0.6'),
         ]
       )
     ]),
