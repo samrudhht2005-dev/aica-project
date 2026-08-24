@@ -8,12 +8,22 @@ os.environ.setdefault("AICA_DESKTOP", "1")
 os.environ.setdefault("AICA_PERSONAL_WAKE", "1")
 
 if getattr(sys, "frozen", False):
-    meipass = Path(getattr(sys, "_MEIPASS", Path(sys.executable).parent))
-    # Prefer _MEIPASS when it contains frontend/
-    if (meipass / "frontend").is_dir():
-        os.environ.setdefault("AICA_ROOT", str(meipass))
-    else:
-        os.environ.setdefault("AICA_ROOT", str(Path(sys.executable).resolve().parent))
+    exe_dir = Path(sys.executable).resolve().parent
+    meipass = Path(getattr(sys, "_MEIPASS", exe_dir))
+    # Resolve packaged assets: Inno flattens engine + _internal into %LOCALAPPDATA%\\AICA\\.
+    root = None
+    for base in (meipass, exe_dir / "_internal", exe_dir):
+        templates = base / "frontend" / "templates"
+        static = base / "frontend" / "static"
+        if templates.is_dir() and static.is_dir():
+            root = base
+            break
+    if root is not None:
+        # Force over inherited launcher AICA_ROOT (launcher bundle has no frontend/).
+        os.environ["AICA_ROOT"] = str(root)
+    elif os.environ.get("AICA_ROOT"):
+        # Drop invalid inherited root so runtime_paths can scan _MEIPASS / _internal.
+        del os.environ["AICA_ROOT"]
     # Interactive click-to-talk needs multi-core CTranslate2. A single thread made
     # ~2.8s of speech take ~14–15s of Whisper inference on packaged Desktop.
     _n = os.cpu_count() or 4

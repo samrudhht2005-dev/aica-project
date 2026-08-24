@@ -54,29 +54,56 @@ def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
+def _has_frontend_bundle(base: Path) -> bool:
+    """True when base contains bundled Jinja templates and static assets."""
+    try:
+        return (
+            (base / "frontend" / "templates").is_dir()
+            and (base / "frontend" / "static").is_dir()
+        )
+    except OSError:
+        return False
+
+
+def _project_root_candidates() -> list[Path]:
+    """Ordered search bases for the packaged frontend bundle."""
+    candidates: list[Path] = []
+    if is_frozen():
+        meipass = getattr(sys, "_MEIPASS", None)
+        exe_dir = Path(sys.executable).resolve().parent
+        if meipass:
+            candidates.append(Path(meipass))
+        candidates.append(exe_dir / "_internal")
+        candidates.append(exe_dir)
+    else:
+        candidates.append(Path(__file__).resolve().parent.parent)
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for base in candidates:
+        try:
+            resolved = base.resolve()
+        except OSError:
+            continue
+        if resolved not in seen:
+            seen.add(resolved)
+            ordered.append(resolved)
+    return ordered
+
+
 def project_root() -> Path:
     """Readable application root (templates, static, vision, database JSON)."""
     override = os.environ.get("AICA_ROOT")
     if override:
+        root = Path(override).resolve()
+        if _has_frontend_bundle(root):
+            return root
+    for base in _project_root_candidates():
+        if _has_frontend_bundle(base):
+            return base
+    if override:
         return Path(override).resolve()
     if is_frozen():
-        # PyInstaller onedir may set _MEIPASS to _internal, or leave assets next to the exe.
-        # Inno flattens AICA.Engine.exe + _internal into %LOCALAPPDATA%\\AICA\\.
-        meipass = getattr(sys, "_MEIPASS", None)
-        exe_dir = Path(sys.executable).resolve().parent
-        candidates: list[Path] = []
-        if meipass:
-            candidates.append(Path(meipass))
-            candidates.append(Path(meipass).parent)
-        candidates.append(exe_dir / "_internal")
-        candidates.append(exe_dir)
-        for base in candidates:
-            try:
-                if (base / "frontend").is_dir() and (base / "frontend" / "templates").is_dir():
-                    return base.resolve()
-            except OSError:
-                continue
-        return exe_dir
+        return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent.parent
 
 

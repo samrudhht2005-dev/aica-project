@@ -136,6 +136,8 @@ def _start_engine(port: int) -> subprocess.Popen:
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
     if exe:
+        # Launcher bundle has no frontend/; never pass its AICA_ROOT to the engine child.
+        env.pop("AICA_ROOT", None)
         cmd = [str(exe)]
         cwd = str(exe.parent)
     else:
