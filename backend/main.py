@@ -150,6 +150,11 @@ def seed_database_products():
 
 @app.on_event("startup")
 def startup_event():
+    # Explicit schema init (create_all under lock + additive upgrades).
+    # Must not run at models import time — see database.schema_init.
+    from database.schema_init import init_database_schema
+
+    init_database_schema()
     print("FastAPI starting up. Camera/YOLO deferred until POS camera is used.")
     # Do not seed demo inventory globally — each organisation starts empty.
     # Do not init_camera here — it blocked desktop startup with OpenCV/YOLO imports.

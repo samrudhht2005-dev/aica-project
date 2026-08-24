@@ -3,8 +3,8 @@
 # PyInstaller Windows version resource for AICA.Updater.exe
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 3, 0),
-    prodvers=(1, 0, 3, 0),
+    filevers=(1, 0, 4, 0),
+    prodvers=(1, 0, 4, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -19,12 +19,12 @@ VSVersionInfo(
         [
           StringStruct(u'CompanyName', u'AICA'),
           StringStruct(u'FileDescription', u'AICA Updater'),
-          StringStruct(u'FileVersion', u'1.0.3'),
+          StringStruct(u'FileVersion', u'1.0.4'),
           StringStruct(u'InternalName', u'AICA.Updater'),
           StringStruct(u'LegalCopyright', u'AICA'),
           StringStruct(u'OriginalFilename', u'AICA.Updater.exe'),
           StringStruct(u'ProductName', u'AICA'),
-          StringStruct(u'ProductVersion', u'1.0.3'),
+          StringStruct(u'ProductVersion', u'1.0.4'),
         ]
       )
     ]),

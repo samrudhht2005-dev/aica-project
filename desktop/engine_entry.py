@@ -41,6 +41,14 @@ def main() -> None:
     except Exception:
         pass
 
+    # Register ORM models, then initialize schema before accepting HTTP traffic.
+    # create_all(checkfirst=True) is serialized with a cross-process lock so
+    # concurrent AICA.Engine startups cannot race on the same SQLite file.
+    import models.db_models  # noqa: F401
+    from database.schema_init import init_database_schema
+
+    init_database_schema()
+
     import uvicorn
     uvicorn.run(
         "backend.main:app",

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, Float, String, TIMESTAMP, ForeignKey, Boolean
-from database.db import engine, Base
+from database.db import Base
 from datetime import datetime
 
 class User(Base):
@@ -177,7 +177,5 @@ class Anomaly(Base):
     status = Column(String, default="Active") # Active, Resolved, Ignored
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
-# Auto-create missing tables, then additive upgrades (no drops / no data wipe)
-Base.metadata.create_all(bind=engine)
-from database.schema_upgrade import upgrade_schema
-upgrade_schema()
+# Models only — schema creation is NOT done at import time.
+# Call database.schema_init.init_database_schema() from engine / FastAPI startup.
