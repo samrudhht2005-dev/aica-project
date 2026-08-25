@@ -8,6 +8,9 @@
         <a href="/pos#checkout" class="pos-nav-link {% if active_page == 'pos' %}active{% endif %}" data-pos-tab="checkout" data-i18n="nav.posCheckout">
             <i class="bi bi-cart-check-fill"></i> <span>Checkout</span>
         </a>
+        <a href="/pos#qr-status" class="pos-nav-link" data-pos-tab="qr-status" data-i18n="nav.posQrStatus">
+            <i class="bi bi-qr-code"></i> <span>QR Status</span>
+        </a>
         <a href="/pos#overview" class="pos-nav-link" data-pos-tab="overview" data-i18n="nav.posOverview">
             <i class="bi bi-speedometer2"></i> <span>Sales Overview</span>
         </a>
@@ -23,15 +26,14 @@
         <a href="/pos#products" class="pos-nav-link" data-pos-tab="products" data-i18n="nav.posProducts">
             <i class="bi bi-box-seam"></i> <span>Product Performance</span>
         </a>
+        <a href="/select-interface" class="" data-i18n="nav.changeWorkspace">
+            <i class="bi bi-grid-3x3-gap"></i> <span>All workspaces</span>
+        </a>
     </div>
 
     <div class="sidebar-footer">
-        <form method="POST" action="/switch-interface" class="sidebar-switch-form">
-            <input type="hidden" name="target" value="org">
-            <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToOrg">
-                <i class="bi bi-arrow-left-right"></i> <span>Switch to Organization</span>
-            </button>
-        </form>
+        {% set current_workspace = 'pos' %}
+        {% include "partials/workspace_switcher.html" %}
 
         {% if auth_user %}
         <div class="sidebar-profile" id="sidebarProfile">

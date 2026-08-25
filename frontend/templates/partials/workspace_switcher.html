@@ -1,0 +1,42 @@
+{# Three-way workspace switcher — pass current_workspace: pos | weigh | org #}
+<div class="workspace-switcher" aria-label="AICA workspaces">
+    <div class="workspace-switcher-label text-muted small px-1 mb-1" data-i18n="nav.workspaces">Workspaces</div>
+    {% if current_workspace != 'pos' %}
+    <form method="POST" action="/switch-interface" class="sidebar-switch-form mb-1">
+        <input type="hidden" name="target" value="pos">
+        <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToPos">
+            <i class="bi bi-cart-check-fill"></i> <span>Switch to POS</span>
+        </button>
+    </form>
+    {% else %}
+    <div class="sidebar-switch-btn workspace-active" aria-current="page">
+        <i class="bi bi-cart-check-fill"></i> <span data-i18n="iface.posTitle">POS</span>
+    </div>
+    {% endif %}
+
+    {% if current_workspace != 'weigh' %}
+    <form method="POST" action="/switch-interface" class="sidebar-switch-form mb-1">
+        <input type="hidden" name="target" value="weigh">
+        <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToWeigh">
+            <i class="bi bi-qr-code"></i> <span>Switch to Weigh &amp; QR</span>
+        </button>
+    </form>
+    {% else %}
+    <div class="sidebar-switch-btn workspace-active" aria-current="page">
+        <i class="bi bi-qr-code"></i> <span data-i18n="nav.weigh">Weigh &amp; QR</span>
+    </div>
+    {% endif %}
+
+    {% if current_workspace != 'org' %}
+    <form method="POST" action="/switch-interface" class="sidebar-switch-form mb-1">
+        <input type="hidden" name="target" value="org">
+        <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToOrg">
+            <i class="bi bi-building"></i> <span>Switch to Organization</span>
+        </button>
+    </form>
+    {% else %}
+    <div class="sidebar-switch-btn workspace-active" aria-current="page">
+        <i class="bi bi-building"></i> <span data-i18n="iface.orgTitleShort">Organization</span>
+    </div>
+    {% endif %}
+</div>

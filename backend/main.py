@@ -125,7 +125,18 @@ def seed_database_products():
             normalized_name = prod_name.strip()
             if normalized_name.lower() not in existing_names:
                 price = default_prices.get(normalized_name, 50.0)
-                product = Product(name=normalized_name, price=price, stock=100.0)
+                loose_names = {
+                    "salt", "rice", "wheat flour", "oil", "onion", "potato",
+                    "banana", "tomato", "chilly", "coriander", "tea", "coffee",
+                    "butter", "cheese", "paneer", "milk",
+                }
+                ptype = "loose" if normalized_name.lower() in loose_names else "packaged"
+                product = Product(
+                    name=normalized_name,
+                    price=price,
+                    stock=100.0,
+                    product_type=ptype,
+                )
                 db.add(product)
                 existing_names.add(normalized_name.lower())
                 seeded_count += 1
@@ -134,7 +145,12 @@ def seed_database_products():
         if "panner" in existing_names and "paneer" not in existing_names:
             panner_db = db.query(Product).filter(sqlalchemy.func.lower(Product.name) == "panner").first()
             if panner_db:
-                db.add(Product(name="Paneer", price=panner_db.price, stock=panner_db.stock))
+                db.add(Product(
+                    name="Paneer",
+                    price=panner_db.price,
+                    stock=panner_db.stock,
+                    product_type=getattr(panner_db, "product_type", None) or "loose",
+                ))
                 existing_names.add("paneer")
                 seeded_count += 1
                 
@@ -159,9 +175,59 @@ def startup_event():
     # Do not seed demo inventory globally — each organisation starts empty.
     # Do not init_camera here — it blocked desktop startup with OpenCV/YOLO imports.
 
+    # Periodic weigh-ticket timeout sweep (ACTIVE past expires_at → CANCELLED).
+    _start_weigh_ticket_timeout_sweeper()
+
 
 @app.on_event("shutdown")
 def shutdown_event():
     print("FastAPI shutting down. Disleasing camera interfaces...")
+    global _weigh_sweep_stop
+    _weigh_sweep_stop = True
     if routes.streamer:
         routes.streamer.stop()
+
+
+_weigh_sweep_stop = False
+_weigh_sweep_thread = None
+
+
+def _start_weigh_ticket_timeout_sweeper():
+    """Daemon thread: cancel overdue ACTIVE weigh tickets every ~60s."""
+    global _weigh_sweep_thread, _weigh_sweep_stop
+    import threading
+    import time
+
+    if _weigh_sweep_thread and _weigh_sweep_thread.is_alive():
+        return
+
+    _weigh_sweep_stop = False
+
+    def _loop():
+        from database.db import SessionLocal
+        from backend.weigh_tickets import cancel_timed_out_tickets
+
+        # Small delay so startup can finish before first sweep.
+        time.sleep(2)
+        while not _weigh_sweep_stop:
+            db = SessionLocal()
+            try:
+                n = cancel_timed_out_tickets(db, limit=500, commit=True)
+                if n:
+                    print(f"Weigh ticket timeout sweep: cancelled {n} overdue ticket(s).")
+            except Exception as e:
+                print(f"Weigh ticket timeout sweep error: {e}")
+            finally:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+            for _ in range(60):
+                if _weigh_sweep_stop:
+                    break
+                time.sleep(1)
+
+    _weigh_sweep_thread = threading.Thread(
+        target=_loop, name="weigh-ticket-timeout-sweep", daemon=True
+    )
+    _weigh_sweep_thread.start()

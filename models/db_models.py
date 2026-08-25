@@ -38,6 +38,9 @@ class Product(Base):
     name = Column(String)
     stock = Column(Float, default=0.0)
     price = Column(Float, default=0.0)
+    # "loose" = sold by weight (kg); "packaged" = sold by whole pieces/units.
+    # Existing rows default to packaged via schema upgrade (safer quantity semantics).
+    product_type = Column(String, default="packaged", nullable=False)
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
 
 class Organization(Base):
@@ -176,6 +179,31 @@ class Anomaly(Base):
     details = Column(String, default="")
     status = Column(String, default="Active") # Active, Resolved, Ignored
     created_at = Column(TIMESTAMP, default=datetime.utcnow)
+
+
+class WeighTicket(Base):
+    """Org-scoped loose-item weigh ticket. QR carries public_token only — never price/weight."""
+
+    __tablename__ = "weigh_tickets"
+
+    id = Column(Integer, primary_key=True)
+    org_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False, index=True)
+    public_token = Column(String, unique=True, nullable=False, index=True)
+    product_name_snapshot = Column(String, nullable=False)
+    weight = Column(Float, nullable=False)
+    unit = Column(String, nullable=False, default="kg")
+    unit_price_snapshot = Column(Float, nullable=False)
+    total_amount_snapshot = Column(Float, nullable=False)
+    # active | reserved | consumed | cancelled | expired
+    status = Column(String, nullable=False, default="active", index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(TIMESTAMP, default=datetime.utcnow)
+    expires_at = Column(TIMESTAMP, nullable=True)
+    consumed_at = Column(TIMESTAMP, nullable=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    cancelled_at = Column(TIMESTAMP, nullable=True)
+    cancel_reason = Column(String, default="")
 
 # Models only — schema creation is NOT done at import time.
 # Call database.schema_init.init_database_schema() from engine / FastAPI startup.

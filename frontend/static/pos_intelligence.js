@@ -111,7 +111,7 @@
     }
 
     function setActiveTab(tab) {
-        const allowed = ["checkout", "overview", "analytics", "history", "invoices", "products"];
+        const allowed = ["checkout", "qr-status", "overview", "analytics", "history", "invoices", "products"];
         if (!allowed.includes(tab)) tab = "checkout";
         $$(".pos-tab-panel").forEach((p) => {
             p.hidden = p.getAttribute("data-pos-panel") !== tab;
@@ -131,6 +131,9 @@
         }
         if (tab === "history" || tab === "invoices") {
             loadHistory(tab === "invoices");
+        }
+        if (tab === "qr-status" && typeof window.loadPosQrStatus === "function") {
+            window.loadPosQrStatus();
         }
     }
 
@@ -536,6 +539,10 @@
 
         const hash = (location.hash || "#checkout").replace("#", "");
         setActiveTab(hash || "checkout");
+        window.addEventListener("hashchange", () => {
+            const next = (location.hash || "#checkout").replace("#", "") || "checkout";
+            setActiveTab(next);
+        });
     }
 
     window.AICA_POS_INTEL = { setActiveTab, loadIntelligence, openInvoice, downloadInvoiceFile };

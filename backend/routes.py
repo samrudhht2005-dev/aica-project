@@ -7,7 +7,7 @@ import os
 import re
 import time
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Form, Response, Depends, UploadFile, File, BackgroundTasks, Body
@@ -19,11 +19,34 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from database.db import SessionLocal, engine
-from models.db_models import Transaction, Product, Organization, Expense, Employee, Asset, ComplianceObligation, TaxRecommendation, Anomaly, User
+from models.db_models import Transaction, Product, Organization, Expense, Employee, Asset, ComplianceObligation, TaxRecommendation, Anomaly, User, WeighTicket
 from backend.auth import (
     hash_password, verify_password, valid_email, valid_gstin,
     set_session_cookie, clear_session_cookie, session_from_request,
     get_ui_mode, set_ui_mode_cookie, clear_ui_mode_cookie,
+)
+from backend.weigh_tickets import (
+    WeighTicketError,
+    cancel_timed_out_tickets,
+    cancel_weigh_ticket_by_token,
+    claim_active_ticket_for_checkout,
+    create_weigh_ticket,
+    list_weigh_tickets,
+    resolve_error_http_status,
+    resolve_weigh_ticket,
+    ticket_public_dict,
+)
+from backend.weigh_label import create_weigh_label_pdf, qr_png_bytes
+from backend.product_types import (
+    PRODUCT_TYPE_LOOSE,
+    PRODUCT_TYPE_PACKAGED,
+    ProductTypeError,
+    can_change_product_type,
+    normalize_product_type,
+    product_type_of,
+    sale_unit_for,
+    validate_sale_quantity,
+    validate_stock_value,
 )
 from gemini.client import (
     query_gemini_assistant, client, MODEL_NAME, generate_content_with_fallback,
@@ -421,7 +444,8 @@ def sync_org_headcount(db: Session, org: Organization):
 def get_db_schema() -> str:
     schema = (
         "Table: products\n"
-        "Columns: id (INTEGER, PK), org_id (INTEGER), name (String), stock (Float), price (Float), created_at (TIMESTAMP)\n\n"
+        "Columns: id (INTEGER, PK), org_id (INTEGER), name (String), stock (Float), price (Float), "
+        "product_type (String: loose|packaged), created_at (TIMESTAMP)\n\n"
         "Table: transactions\n"
         "Columns: id (INTEGER, PK), org_id (INTEGER), product_name (String), price (Float), quantity (Float), gst_percent (Float), gst_amount (Float), total_amount (Float), category (String, holds JSON details), created_at (TIMESTAMP)\n\n"
         "Table: organizations\n"
@@ -850,6 +874,7 @@ def get_camera_status():
         "preview_available": summary.get("preview_available", True),
         "ai_detection_available": summary.get("ai_detection_available", False),
         "ai_detection_error": summary.get("ai_detection_error"),
+        "qr_detection_available": summary.get("qr_detection_available", True),
         "scan_state": summary.get("state"),
         "scan_message": summary.get("message"),
         "auto_add_enabled": summary.get("auto_add_enabled", False),
@@ -872,6 +897,7 @@ def set_camera_power(enabled: str = Form("false")):
         "preview_available": summary.get("preview_available", True),
         "ai_detection_available": summary.get("ai_detection_available", False),
         "ai_detection_error": summary.get("ai_detection_error"),
+        "qr_detection_available": summary.get("qr_detection_available", True),
         "scan_state": summary.get("state"),
         "scan_message": summary.get("message"),
     }
@@ -887,8 +913,66 @@ def get_camera_detections():
             "detections": [],
             "accepted": [],
             "model_ready": False,
+            "scan_purpose": "checkout",
         }
     return streamer.get_latest_summary()
+
+
+@router.post("/camera/scan_purpose")
+def set_camera_scan_purpose(purpose: str = Form("checkout")):
+    """
+    Direct QR events to POS checkout or Weigh verified-cancel.
+    Uses the shared OpenCV QRCodeDetector path (desktop-safe).
+    """
+    ensure_camera()
+    if streamer is None:
+        return {"success": False, "error": "Camera streamer not initialized"}
+    p = streamer.set_scan_purpose(purpose)
+    return {"success": True, "scan_purpose": p}
+
+
+@router.post("/camera/decode")
+async def decode_camera_frame(request: Request):
+    """
+    Decode an uploaded image frame with OpenCV QRCodeDetector.
+    Platform-independent fallback / test path (does not require BarcodeDetector).
+    Accepts multipart file field "frame" or "image", or raw body bytes.
+    """
+    ensure_camera()
+    if streamer is None:
+        return JSONResponse({"ok": False, "error": "Camera streamer not initialized"}, status_code=503)
+
+    import cv2
+    import numpy as np
+
+    raw = b""
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        upload = form.get("frame") or form.get("image") or form.get("file")
+        if upload is not None and hasattr(upload, "read"):
+            raw = await upload.read()
+        elif isinstance(upload, (bytes, bytearray)):
+            raw = bytes(upload)
+    else:
+        raw = await request.body()
+
+    if not raw:
+        return JSONResponse(
+            {"ok": False, "error": "No image frame provided.", "code": "missing_frame"},
+            status_code=400,
+        )
+    arr = np.frombuffer(raw, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None:
+        return JSONResponse(
+            {"ok": False, "error": "Could not decode image.", "code": "bad_image"},
+            status_code=400,
+        )
+    token, _ = streamer.detect_aica_qr_token(frame, force=True)
+    if not token:
+        return {"ok": False, "token": None, "code": "no_aica_qr"}
+    return {"ok": True, "token": token}
 
 @router.post("/camera/auto_add")
 def set_camera_auto_add(enabled: str = Form("false")):
@@ -932,6 +1016,8 @@ def confirm_camera_product(
         "name": product.name,
         "price": product.price,
         "stock": product.stock,
+        "product_type": product_type_of(product),
+        "unit": sale_unit_for(product_type_of(product)),
         "gst_pct": classify_gst(product.name),
         "confidence": float(confidence),
     }
@@ -962,12 +1048,21 @@ def set_camera_index(index: int = Form(...)):
     }
 
 # ---------------- AUTH ----------------
+def _workspace_home(mode: str) -> str:
+    mode_n = (mode or "").strip().lower()
+    if mode_n == "pos":
+        return "/pos"
+    if mode_n == "weigh":
+        return "/weigh"
+    if mode_n == "org":
+        return "/"
+    return "/select-interface"
+
+
 def _post_auth_home(request: Request) -> str:
     mode = get_ui_mode(request)
-    if mode == "pos":
-        return "/pos"
-    if mode == "org":
-        return "/"
+    if mode in ("pos", "org", "weigh"):
+        return _workspace_home(mode)
     return "/select-interface"
 
 @router.get("/select-interface")
@@ -982,15 +1077,20 @@ def select_interface_page(request: Request, db: Session = Depends(get_db)):
     )
 
 @router.post("/select-interface")
-def select_interface_submit(request: Request, mode: str = Form(...), db: Session = Depends(get_db)):
+def select_interface_submit(
+    request: Request,
+    db: Session = Depends(get_db),
+    mode: str | None = Form(None),
+    target: str | None = Form(None),
+):
+    """Legacy landing POST — prefer /switch-interface (used by workspace cards + sidebars)."""
     user, org = current_user_org(request, db)
     if not user or not org:
         return login_redirect()
-    mode_n = (mode or "").strip().lower()
-    if mode_n not in ("pos", "org"):
+    mode_n = ((mode or target) or "").strip().lower()
+    if mode_n not in ("pos", "org", "weigh"):
         return RedirectResponse("/select-interface", status_code=303)
-    dest = "/pos" if mode_n == "pos" else "/"
-    response = RedirectResponse(dest, status_code=303)
+    response = RedirectResponse(_workspace_home(mode_n), status_code=303)
     set_ui_mode_cookie(response, mode_n)
     return response
 
@@ -1000,11 +1100,11 @@ def switch_interface(request: Request, target: str = Form(...), db: Session = De
     if not user or not org:
         return login_redirect()
     target_n = (target or "").strip().lower()
-    if target_n not in ("pos", "org"):
+    if target_n not in ("pos", "org", "weigh"):
+        # Legacy two-way toggle fallback
         current = get_ui_mode(request) or "org"
-        target_n = "pos" if current == "org" else "org"
-    dest = "/pos" if target_n == "pos" else "/"
-    response = RedirectResponse(dest, status_code=303)
+        target_n = "pos" if current != "pos" else "org"
+    response = RedirectResponse(_workspace_home(target_n), status_code=303)
     set_ui_mode_cookie(response, target_n)
     return response
 
@@ -2135,6 +2235,8 @@ class CartItem(BaseModel):
     product: str
     price: float
     quantity: float
+    # When set, checkout ignores client price/qty and uses authoritative WeighTicket snapshots.
+    weigh_ticket_token: Optional[str] = None
 
 from fpdf import FPDF
 
@@ -2196,36 +2298,114 @@ def add_multiple_transactions(request: Request, items: List[CartItem] = Body(...
         return JSONResponse({"error": "Cart is empty."}, status_code=400)
 
     prepared = []
+    seen_ticket_tokens = set()
     try:
         for item in items:
+            token = (item.weigh_ticket_token or "").strip() or None
+
+            if token:
+                if token in seen_ticket_tokens:
+                    db.rollback()
+                    return JSONResponse(
+                        {
+                            "error": "This QR ticket is already in the cart.",
+                            "code": "duplicate_ticket",
+                        },
+                        status_code=400,
+                    )
+                seen_ticket_tokens.add(token)
+
+                try:
+                    resolved = resolve_weigh_ticket(db, org_id=org.id, public_token=token)
+                except WeighTicketError as e:
+                    db.rollback()
+                    return JSONResponse(
+                        {"error": e.message, "code": e.code},
+                        status_code=resolve_error_http_status(e.code),
+                    )
+
+                ticket = resolved.ticket
+                product = resolved.product
+                qty = float(ticket.weight)
+                unit_price = float(ticket.unit_price_snapshot)
+                # Authoritative pre-GST line amount from ticket snapshots (not client).
+                subtotal = float(ticket.total_amount_snapshot)
+                if qty <= 0:
+                    db.rollback()
+                    return JSONResponse({"error": "Invalid weigh ticket weight."}, status_code=400)
+
+                available = float(product.stock or 0)
+                if available < qty:
+                    qty_label = int(available) if available == int(available) else round(available, 2)
+                    db.rollback()
+                    return JSONResponse(
+                        {
+                            "error": f"Insufficient stock for {product.name}. Available quantity: {qty_label}.",
+                            "code": "insufficient_stock",
+                        },
+                        status_code=400,
+                    )
+
+                gst = classify_gst(product.name)
+                gst_amt = round(subtotal * gst / 100, 2)
+                total = round(subtotal + gst_amt, 2)
+                prepared.append({
+                    "product_row": product,
+                    "qty": qty,
+                    "weigh_ticket_token": token,
+                    "pdf": {
+                        "product": ticket.product_name_snapshot,
+                        "price": unit_price,
+                        "qty": qty,
+                        "subtotal": subtotal,
+                        "gst_pct": f"{gst}%",
+                        "gst_amt": gst_amt,
+                        "total": total,
+                        "source": "weigh_ticket",
+                        "weigh_ticket_id": ticket.id,
+                        "unit": ticket.unit,
+                    },
+                })
+                continue
+
             if item.quantity is None or item.quantity <= 0:
+                db.rollback()
                 return JSONResponse({"error": "Enter a valid quantity greater than zero."}, status_code=400)
             if item.price is None or item.price < 0:
+                db.rollback()
                 return JSONResponse({"error": f"Invalid price for {item.product}."}, status_code=400)
             product = db.query(Product).filter(
                 Product.org_id == org.id,
                 func.lower(Product.name) == item.product.strip().lower()
             ).first()
             if not product:
+                db.rollback()
                 return JSONResponse({"error": f"Product not found: {item.product}."}, status_code=400)
+            try:
+                qty = validate_sale_quantity(product_type_of(product), item.quantity)
+            except ProductTypeError as e:
+                db.rollback()
+                return JSONResponse({"error": e.message, "code": e.code}, status_code=400)
             available = float(product.stock or 0)
-            if available < float(item.quantity):
+            if available < qty:
                 qty_label = int(available) if available == int(available) else round(available, 2)
+                db.rollback()
                 return JSONResponse(
                     {"error": f"Insufficient stock for {product.name}. Available quantity: {qty_label}."},
                     status_code=400
                 )
             gst = classify_gst(product.name)
-            subtotal = float(item.price) * float(item.quantity)
+            subtotal = float(item.price) * qty
             gst_amt = round(subtotal * gst / 100, 2)
             total = round(subtotal + gst_amt, 2)
             prepared.append({
                 "product_row": product,
-                "qty": float(item.quantity),
+                "qty": qty,
+                "weigh_ticket_token": None,
                 "pdf": {
                     "product": product.name,
                     "price": float(item.price),
-                    "qty": float(item.quantity),
+                    "qty": qty,
                     "subtotal": subtotal,
                     "gst_pct": f"{gst}%",
                     "gst_amt": gst_amt,
@@ -2233,13 +2413,32 @@ def add_multiple_transactions(request: Request, items: List[CartItem] = Body(...
                 },
             })
 
+        # Aggregate demand per product (mixed normal + ticket lines).
+        demand: Dict[int, float] = {}
+        for row in prepared:
+            pid = int(row["product_row"].id)
+            demand[pid] = demand.get(pid, 0.0) + float(row["qty"])
+        for pid, need in demand.items():
+            product_row = next(r["product_row"] for r in prepared if int(r["product_row"].id) == pid)
+            available = float(product_row.stock or 0)
+            if available < need:
+                db.rollback()
+                qty_label = int(available) if available == int(available) else round(available, 2)
+                return JSONResponse(
+                    {
+                        "error": f"Insufficient stock for {product_row.name}. Available quantity: {qty_label}.",
+                        "code": "insufficient_stock",
+                    },
+                    status_code=400,
+                )
+
         grand_total = sum(p["pdf"]["total"] for p in prepared)
         total_tax = sum(p["pdf"]["gst_amt"] for p in prepared)
         pdf_items = [p["pdf"] for p in prepared]
 
         for row in prepared:
             row["product_row"].stock = float(row["product_row"].stock or 0) - row["qty"]
-            if row["product_row"].stock < 0:
+            if row["product_row"].stock < -1e-9:
                 db.rollback()
                 return JSONResponse({"error": "Unable to complete the sale. Please try again."}, status_code=409)
 
@@ -2254,6 +2453,26 @@ def add_multiple_transactions(request: Request, items: List[CartItem] = Body(...
             total_amount=grand_total,
         )
         db.add(transaction)
+        db.flush()  # allocate transaction.id before consuming tickets
+
+        for row in prepared:
+            token = row.get("weigh_ticket_token")
+            if not token:
+                continue
+            try:
+                claim_active_ticket_for_checkout(
+                    db,
+                    org_id=org.id,
+                    public_token=token,
+                    transaction_id=transaction.id,
+                )
+            except WeighTicketError as e:
+                db.rollback()
+                return JSONResponse(
+                    {"error": e.message, "code": e.code},
+                    status_code=resolve_error_http_status(e.code),
+                )
+
         db.commit()
         db.refresh(transaction)
     except Exception:
@@ -2341,27 +2560,147 @@ def warehouse(request: Request, db: Session = Depends(get_db)):
         context=page_ctx(request, db, "warehouse", {"products": products}, org=org, user=user)
     )
 
+
+@router.get("/weigh")
+def weigh_page(request: Request, db: Session = Depends(get_db)):
+    """Weigh & QR workspace — generate ACTIVE QR weigh tickets (no stock deduction)."""
+    user, org = current_user_org(request, db)
+    if not org:
+        return login_redirect()
+    products = (
+        db.query(Product)
+        .filter(Product.org_id == org.id, Product.product_type == PRODUCT_TYPE_LOOSE)
+        .order_by(Product.name)
+        .all()
+    )
+    response = templates.TemplateResponse(
+        request=request,
+        name="weigh.html",
+        context=page_ctx(request, db, "weigh", {"products": products, "ui_mode": "weigh"}, org=org, user=user),
+    )
+    set_ui_mode_cookie(response, "weigh")
+    return response
+
+
+def _org_weigh_ticket_or_404(db: Session, org_id: int, ticket_id: int) -> WeighTicket:
+    ticket = (
+        db.query(WeighTicket)
+        .filter(WeighTicket.id == int(ticket_id), WeighTicket.org_id == int(org_id))
+        .first()
+    )
+    if not ticket:
+        raise WeighTicketError("not_found", "Weigh ticket not found.")
+    return ticket
+
+
+@router.get("/api/weigh-tickets/{ticket_id}/qr.png")
+def api_weigh_ticket_qr_png(request: Request, ticket_id: int, db: Session = Depends(get_db)):
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        ticket = _org_weigh_ticket_or_404(db, org.id, ticket_id)
+    except WeighTicketError as e:
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    png = qr_png_bytes(ticket.public_token)
+    return Response(content=png, media_type="image/png")
+
+
+@router.get("/api/weigh-tickets/{ticket_id}/label.pdf")
+def api_weigh_ticket_label_pdf(request: Request, ticket_id: int, db: Session = Depends(get_db)):
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        ticket = _org_weigh_ticket_or_404(db, org.id, ticket_id)
+        pdf_bytes = create_weigh_label_pdf(ticket)
+    except WeighTicketError as e:
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    filename = f"aica_weigh_label_{ticket.id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 @router.post("/add_product")
 def add_product(
     request: Request,
     name: str = Form(...),
     price: float = Form(...),
     stock: float = Form(...),
+    product_type: str = Form(...),
     db: Session = Depends(get_db)
 ):
     user, org = current_user_org(request, db)
     if not org:
         return login_redirect()
+
+    def _warehouse_error(msg: str):
+        return RedirectResponse(f"/warehouse?error={quote(msg)}", status_code=303)
+
     normalized_name = name.strip().title()
-    product = db.query(Product).filter(Product.org_id == org.id, func.lower(Product.name) == normalized_name.lower()).first()
-    
+    if not normalized_name:
+        return _warehouse_error("Enter a product name.")
+    try:
+        price_f = float(price)
+    except (TypeError, ValueError):
+        return _warehouse_error("Enter a valid price.")
+    if price_f < 0:
+        return _warehouse_error("Price cannot be negative.")
+
+    try:
+        ptype = normalize_product_type(product_type, required=True)
+        stock_delta = validate_stock_value(ptype, stock, allow_zero=True)
+    except ProductTypeError as e:
+        return _warehouse_error(e.message)
+
+    product = db.query(Product).filter(
+        Product.org_id == org.id,
+        func.lower(Product.name) == normalized_name.lower(),
+    ).first()
+
     if product:
-        product.price = price
-        product.stock += stock
+        try:
+            can_change_product_type(
+                current_type=product_type_of(product),
+                new_type=ptype,
+                current_stock=float(product.stock or 0),
+            )
+            # Validate the stock *delta* under the selected type.
+            # Do not re-validate legacy absolute stock for already-packaged rows that
+            # may carry pre-migration fractional values (defaulted to packaged).
+            validate_stock_value(ptype, stock_delta, allow_zero=True)
+            resulting = float(product.stock or 0) + float(stock_delta)
+            if resulting < -1e-9:
+                raise ProductTypeError("invalid_stock", "Stock cannot be negative.")
+            if (
+                ptype == PRODUCT_TYPE_PACKAGED
+                and product_type_of(product) != PRODUCT_TYPE_PACKAGED
+            ):
+                # Converting into packaged: final stock must be whole.
+                validate_stock_value(ptype, resulting, allow_zero=True)
+        except ProductTypeError as e:
+            return _warehouse_error(e.message)
+        product.price = price_f
+        product.product_type = ptype
+        product.stock = float(product.stock or 0) + float(stock_delta)
     else:
-        product = Product(org_id=org.id, name=normalized_name, price=price, stock=stock)
+        product = Product(
+            org_id=org.id,
+            name=normalized_name,
+            price=price_f,
+            stock=stock_delta,
+            product_type=ptype,
+        )
         db.add(product)
-        
+
     db.commit()
     return RedirectResponse("/warehouse", status_code=303)
 
@@ -2381,8 +2720,188 @@ def get_api_products(request: Request, db: Session = Depends(get_db)):
     user, org = current_user_org(request, db)
     if not org:
         return []
-    products = db.query(Product).filter(Product.org_id == org.id).all()
-    return [{"name": p.name, "price": p.price, "stock": p.stock} for p in products]
+    products = db.query(Product).filter(Product.org_id == org.id).order_by(Product.name).all()
+    out = []
+    for p in products:
+        ptype = product_type_of(p)
+        out.append({
+            "id": p.id,
+            "name": p.name,
+            "price": p.price,
+            "stock": p.stock,
+            "product_type": ptype,
+            "unit": sale_unit_for(ptype),
+            "is_loose": ptype == PRODUCT_TYPE_LOOSE,
+        })
+    return out
+
+
+class WeighTicketCreateBody(BaseModel):
+    product_id: int
+    weight: float
+    unit: str = "kg"
+    # Client-supplied expires_at is ignored; server always assigns a 12-hour TTL.
+
+
+class WeighTicketResolveBody(BaseModel):
+    public_token: str
+
+
+class WeighTicketCancelByTokenBody(BaseModel):
+    token: str
+
+
+@router.get("/api/weigh-tickets")
+def api_list_weigh_tickets(
+    request: Request,
+    status: str = "all",
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """Org-scoped QR ticket history for Weigh & POS status views."""
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        rows, total = list_weigh_tickets(
+            db, org_id=org.id, status=status, limit=limit, offset=offset
+        )
+        db.commit()  # persist any lazy timeout cancellations from the list sweep
+    except WeighTicketError as e:
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    return {
+        "ok": True,
+        "total": total,
+        "limit": max(1, min(int(limit or 50), 200)),
+        "offset": max(0, int(offset or 0)),
+        "tickets": [ticket_public_dict(t, include_token=False) for t in rows],
+    }
+
+
+@router.post("/api/weigh-tickets")
+def api_create_weigh_ticket(
+    request: Request,
+    body: WeighTicketCreateBody = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Create an ACTIVE weigh ticket. Does not deduct stock. QR payload = public_token only."""
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        ticket = create_weigh_ticket(
+            db,
+            org_id=org.id,
+            product_id=body.product_id,
+            weight=body.weight,
+            unit=body.unit or "kg",
+            created_by_user_id=user.id if user else None,
+            expires_at=None,  # always 12h server TTL
+            commit=True,
+        )
+    except WeighTicketError as e:
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    return {"ok": True, "ticket": ticket_public_dict(ticket, include_token=True)}
+
+
+@router.post("/api/weigh-tickets/resolve")
+def api_resolve_weigh_ticket(
+    request: Request,
+    body: WeighTicketResolveBody = Body(...),
+    db: Session = Depends(get_db),
+):
+    """Resolve opaque token for POS. Does not deduct stock or consume the ticket."""
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        resolved = resolve_weigh_ticket(db, org_id=org.id, public_token=body.public_token)
+        # Persist lazy expiry transitions without consuming.
+        db.commit()
+    except WeighTicketError as e:
+        db.rollback()
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    ticket = resolved.ticket
+    product = resolved.product
+    return {
+        "ok": True,
+        "ticket": ticket_public_dict(ticket, include_token=False),
+        "product": {
+            "id": product.id,
+            "name": product.name,
+            "price": float(product.price or 0),
+            "stock": float(product.stock or 0),
+        },
+        # Authoritative line values for cart (client must not invent price/weight).
+        "line": {
+            "product_id": product.id,
+            "product": ticket.product_name_snapshot,
+            "weight": ticket.weight,
+            "unit": ticket.unit,
+            "unit_price": ticket.unit_price_snapshot,
+            "total_amount": ticket.total_amount_snapshot,
+            "public_token": ticket.public_token,
+        },
+    }
+
+
+@router.post("/api/weigh-tickets/cancel-by-token")
+def api_cancel_weigh_ticket_by_token(
+    request: Request,
+    body: WeighTicketCancelByTokenBody = Body(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Verified cancellation: requires scanning the opaque QR token.
+    Does not accept ticket IDs. Never changes stock.
+    """
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    try:
+        ticket = cancel_weigh_ticket_by_token(
+            db,
+            org_id=org.id,
+            public_token=body.token,
+            commit=True,
+        )
+    except WeighTicketError as e:
+        return JSONResponse(
+            {"ok": False, "error": e.message, "code": e.code},
+            status_code=resolve_error_http_status(e.code),
+        )
+    return {"ok": True, "ticket": ticket_public_dict(ticket, include_token=False)}
+
+
+@router.post("/api/weigh-tickets/{ticket_id}/cancel")
+def api_cancel_weigh_ticket_by_id_blocked(
+    request: Request,
+    ticket_id: int,
+    db: Session = Depends(get_db),
+):
+    """Legacy ID-based cancel is disabled — physical QR token verification is required."""
+    user, org = current_user_org(request, db)
+    if not org:
+        return JSONResponse({"ok": False, "error": "Please sign in again.", "code": "unauthorized"}, status_code=401)
+    return JSONResponse(
+        {
+            "ok": False,
+            "error": "Cancel requires scanning the QR ticket. Use POST /api/weigh-tickets/cancel-by-token.",
+            "code": "cancel_requires_token",
+        },
+        status_code=403,
+    )
+
 
 # ---------------- EXPORT AND CLEAR ----------------
 @router.get("/export_and_clear")

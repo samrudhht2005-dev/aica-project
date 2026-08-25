@@ -8,6 +8,9 @@ import numpy as np
 
 from vision.product_classes import PRODUCT_CLASSES
 
+# Opaque weigh-ticket QR prefix (must match backend.weigh_tickets.TOKEN_PREFIX).
+AICA_QR_PREFIX = "AICA1."
+
 
 class CameraStreamer:
     def __init__(self, detection_callback=None):
@@ -40,6 +43,18 @@ class CameraStreamer:
         self.last_detection = {}
         self.cooldown = 3.0
 
+        # OpenCV QR (no torch). Throttle + debounce so one held QR does not spam cart.
+        self._qr_detector = None
+        self._last_qr_scan_at = 0.0
+        self._qr_scan_interval = 0.20  # seconds between QR decode attempts
+        self.qr_cooldown = 4.0  # seconds before same token emits a new event_id
+        self._last_qr_token = None
+        self._last_qr_emit_at = 0.0
+        self._qr_event_seq = 0
+        self._latest_qr_event = None
+        # Who should consume qr_event: "checkout" (POS) or "cancel" (Weigh verified cancel).
+        self.scan_purpose = "checkout"
+
         self.sim_products = list(PRODUCT_CLASSES)
         self.current_sim_product = None
         self.sim_product_start = 0
@@ -47,6 +62,11 @@ class CameraStreamer:
         self.sim_next_product_time = 0
         self.scan_line_y = 80
         self.scan_dir = 1
+
+    def _ensure_qr_detector(self):
+        if self._qr_detector is None:
+            self._qr_detector = cv2.QRCodeDetector()
+        return self._qr_detector
 
     def _ensure_detector(self):
         """Load YOLO only when POS camera is first powered on. Returns None if unavailable."""
@@ -96,18 +116,45 @@ class CameraStreamer:
             summary = dict(self.latest_summary)
             summary["detections"] = list(self.latest_summary.get("detections") or [])
             summary["accepted"] = list(self.latest_summary.get("accepted") or [])
+            qr_event = dict(self._latest_qr_event) if self._latest_qr_event else None
             det = self.detector
             model_ready = bool(det and getattr(det, "model_ready", False))
             summary["model_ready"] = model_ready
             summary["preview_available"] = True
             summary["ai_detection_available"] = model_ready
             summary["ai_detection_error"] = self._detector_error
+            summary["qr_detection_available"] = True
+            summary["qr_event"] = qr_event
+            summary["scan_purpose"] = self.scan_purpose
             summary["auto_add_enabled"] = self.auto_add_enabled
             summary["camera_powered"] = self.camera_powered
             return summary
 
     def set_auto_add(self, enabled: bool):
         self.auto_add_enabled = bool(enabled)
+
+    def set_scan_purpose(self, purpose: str) -> str:
+        """
+        Route QR events to checkout (POS) or cancel (Weigh).
+        Switching purpose clears the pending qr_event so a stale token
+        is not immediately applied to the other consumer.
+        """
+        p = (purpose or "checkout").strip().lower()
+        if p not in ("checkout", "cancel"):
+            p = "checkout"
+        with self.lock:
+            if p != self.scan_purpose:
+                self.scan_purpose = p
+                self._latest_qr_event = None
+                self._last_qr_token = None
+                self._last_qr_emit_at = 0.0
+            else:
+                self.scan_purpose = p
+        return self.scan_purpose
+
+    def clear_qr_event(self):
+        with self.lock:
+            self._latest_qr_event = None
 
     def set_camera_power(self, powered: bool) -> bool:
         """Explicit ON/OFF. OFF releases the device and stops CV inference."""
@@ -124,6 +171,8 @@ class CameraStreamer:
                     pass
                 self.cap = None
             self.current_sim_product = None
+            with self.lock:
+                self._latest_qr_event = None
             self._publish_summary({
                 "state": "camera_off",
                 "message": "Camera is off. Turn it on to scan products.",
@@ -134,7 +183,7 @@ class CameraStreamer:
             return True
 
         # Power ON — try YOLO now (keeps FastAPI/desktop startup fast).
-        # Preview still works if the detector is missing (e.g. packaged build without torch).
+        # Preview + OpenCV QR still work if the detector is missing (no torch).
         detector = None if self.is_simulated else self._ensure_detector()
 
         self.camera_powered = True
@@ -176,11 +225,12 @@ class CameraStreamer:
                 })
                 return False
             if detector is not None:
-                scan_msg = "Ready to scan — place a trained product in view."
+                scan_msg = "Ready — show an AICA QR ticket or a trained product."
             else:
                 reason = self._detector_error or "product detector unavailable"
                 scan_msg = (
-                    f"Camera preview only — AI product detection unavailable ({reason})."
+                    "Camera live — QR inventory scanning ready. "
+                    f"AI product detection unavailable ({reason})."
                 )
             self._publish_summary({
                 "state": "scanning" if detector is not None else "preview",
@@ -220,6 +270,142 @@ class CameraStreamer:
         summary["camera_powered"] = self.camera_powered
         with self.lock:
             self.latest_summary = summary
+
+    @staticmethod
+    def is_aica_qr_payload(raw: str) -> bool:
+        return bool(raw) and str(raw).strip().startswith(AICA_QR_PREFIX)
+
+    def detect_aica_qr_token(self, frame, *, force: bool = False):
+        """
+        Decode an AICA weigh-ticket QR from a BGR frame using OpenCV only.
+
+        Returns (token, points) or (None, None). Non-AICA payloads are ignored.
+        Throttled unless force=True (tests).
+        """
+        if frame is None:
+            return None, None
+        now = time.time()
+        if not force and (now - self._last_qr_scan_at) < self._qr_scan_interval:
+            return None, None
+        self._last_qr_scan_at = now
+        try:
+            detector = self._ensure_qr_detector()
+            data, points, _ = detector.detectAndDecode(frame)
+        except Exception as e:
+            logging.debug("QR detect failed: %s", e)
+            return None, None
+        if not data:
+            return None, None
+        token = str(data).strip()
+        if not self.is_aica_qr_payload(token):
+            return None, None
+        return token, points
+
+    def _emit_qr_event(self, token: str, *, force_new: bool = False) -> dict:
+        """
+        Debounce identical tokens. Returns the current qr_event dict.
+
+        Within qr_cooldown for the same token, reuses the same event_id so the
+        POS does not re-resolve every frame. After cooldown, a new event_id is
+        emitted so a deliberate rescan (e.g. already purchased) can surface.
+        """
+        now = time.time()
+        with self.lock:
+            if (
+                not force_new
+                and token == self._last_qr_token
+                and self._latest_qr_event is not None
+                and (now - self._last_qr_emit_at) < self.qr_cooldown
+            ):
+                return dict(self._latest_qr_event)
+            self._last_qr_token = token
+            self._last_qr_emit_at = now
+            self._qr_event_seq += 1
+            self._latest_qr_event = {
+                "token": token,
+                "timestamp": now,
+                "event_id": self._qr_event_seq,
+            }
+            return dict(self._latest_qr_event)
+
+    def process_frame_qr_first(self, frame):
+        """
+        QR-first pass used by the live camera loop and tests.
+
+        Returns (frame, qr_token_or_None, ran_yolo_bool).
+        """
+        now = time.time()
+        throttled = (now - self._last_qr_scan_at) < self._qr_scan_interval
+        if throttled:
+            with self.lock:
+                holding_qr = (
+                    self._latest_qr_event is not None
+                    and self._last_qr_token
+                    and (now - self._last_qr_emit_at) < self.qr_cooldown
+                )
+            if holding_qr:
+                # Same QR still in cooldown window — do not YOLO this frame.
+                return frame, self._last_qr_token, False
+            token, points = None, None
+        else:
+            token, points = self.detect_aica_qr_token(frame, force=True)
+
+        if token:
+            self._emit_qr_event(token)
+            if points is not None:
+                try:
+                    pts = points.astype(int).reshape(-1, 2)
+                    if len(pts) >= 4:
+                        cv2.polylines(frame, [pts], True, (46, 204, 113), 2)
+                        cv2.putText(
+                            frame,
+                            "AICA QR",
+                            (int(pts[0][0]), max(20, int(pts[0][1]) - 8)),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6,
+                            (46, 204, 113),
+                            2,
+                            cv2.LINE_AA,
+                        )
+                except Exception:
+                    pass
+            # QR wins this cycle — skip YOLO for this frame.
+            if self.detector is not None and getattr(self.detector, "model_ready", False):
+                msg = "AICA QR ticket detected — resolving inventory…"
+                state = "scanning"
+            else:
+                msg = "AICA QR ticket detected — resolving inventory… (AI product detection unavailable)"
+                state = "preview"
+            self._publish_summary({
+                "state": state,
+                "message": msg,
+                "detections": [],
+                "accepted": [],
+            })
+            return frame, token, False
+
+        detector = self._ensure_detector()
+        if detector is not None:
+            detections = detector.detect(frame)
+            summary = detector.summarize(detections)
+            self._publish_summary(summary)
+            frame = self._draw_detections(frame, detections)
+            if self.auto_add_enabled and self.detection_callback:
+                for det in summary.get("accepted") or []:
+                    self._handle_detection(det["label"], det["confidence"])
+            return frame, None, True
+
+        reason = self._detector_error or "product detector unavailable"
+        self._publish_summary({
+            "state": "preview",
+            "message": (
+                "Camera live — QR inventory scanning ready. "
+                f"AI product detection unavailable ({reason})."
+            ),
+            "detections": [],
+            "accepted": [],
+        })
+        return frame, None, False
 
     def _idle_frame(self, message: str = "CAMERA OFF"):
         h, w = 480, 640
@@ -284,27 +470,7 @@ class CameraStreamer:
                             print("Lost camera stream. Powering OFF.")
                             self.set_camera_power(False)
                             continue
-
-                        detector = self._ensure_detector()
-                        if detector is not None:
-                            detections = detector.detect(frame)
-                            summary = detector.summarize(detections)
-                            self._publish_summary(summary)
-                            frame = self._draw_detections(frame, detections)
-
-                            if self.auto_add_enabled and self.detection_callback:
-                                for det in summary.get("accepted") or []:
-                                    self._handle_detection(det["label"], det["confidence"])
-                        else:
-                            reason = self._detector_error or "product detector unavailable"
-                            self._publish_summary({
-                                "state": "preview",
-                                "message": (
-                                    f"Camera live — AI product detection unavailable ({reason})."
-                                ),
-                                "detections": [],
-                                "accepted": [],
-                            })
+                        frame, _token, _yolo = self.process_frame_qr_first(frame)
                 except Exception as e:
                     logging.error("Error reading camera frame: %s", e)
                     self.set_camera_power(False)
@@ -360,7 +526,7 @@ class CameraStreamer:
                 self.current_sim_product = None
                 self._publish_summary({
                     "state": "scanning",
-                    "message": "Ready to scan — place a trained product in view.",
+                    "message": "Ready — show an AICA QR ticket or a trained product.",
                     "detections": [],
                     "accepted": [],
                 })

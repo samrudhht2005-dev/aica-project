@@ -22,15 +22,14 @@
             <span style="flex-grow: 1;" data-i18n="nav.warehouse">Warehouse</span>
             {% if has_low_stock %}<span class="alert-badge" title="Low Stock Alert"><i class="bi bi-exclamation-triangle-fill"></i></span>{% endif %}
         </a>
+        <a href="/select-interface" class="" data-i18n="nav.changeWorkspace">
+            <i class="bi bi-grid-3x3-gap"></i> <span>All workspaces</span>
+        </a>
     </div>
 
     <div class="sidebar-footer">
-        <form method="POST" action="/switch-interface" class="sidebar-switch-form">
-            <input type="hidden" name="target" value="pos">
-            <button type="submit" class="sidebar-switch-btn" data-i18n="nav.switchToPos">
-                <i class="bi bi-arrow-left-right"></i> <span>Switch to POS</span>
-            </button>
-        </form>
+        {% set current_workspace = 'org' %}
+        {% include "partials/workspace_switcher.html" %}
 
         {% if auth_user %}
         <div class="sidebar-profile" id="sidebarProfile">

@@ -21,6 +21,10 @@
 <div class="main-content fade-in-up">
     <h1 class="page-title" style="font-weight: 800; font-size: 36px; margin-bottom: 24px;" data-i18n="pages.warehouseTitle">Warehouse Management</h1>
     
+    {% if request.query_params.get('error') %}
+    <div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('error') }}</div>
+    {% endif %}
+
     {% set low_stock_products = products | selectattr("stock", "<", 10) | list %}
     {% if low_stock_products %}
     <div class="alert alert-warning mb-4" role="alert">
@@ -42,19 +46,29 @@
             <form id="addProductForm" action="/add_product" method="POST">
                 <div class="mb-3">
                     <label class="form-label text-muted" style="font-size: 0.9em;">Product Name</label>
-                    <input type="text" id="whProduct" name="name" class="form-control modern-input" placeholder="e.g. Laptop" required autocomplete="off">
+                    <input type="text" id="whProduct" name="name" class="form-control modern-input" placeholder="e.g. Rice or Cadbury Dairy Milk" required autocomplete="off">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label text-muted" style="font-size: 0.9em;">Product Type</label>
+                    <select id="whProductType" name="product_type" class="form-select modern-input" required>
+                        <option value="" disabled selected>Select type…</option>
+                        <option value="loose">Loose — sold by weight (kg)</option>
+                        <option value="packaged">Packaged — sold by quantity (pieces)</option>
+                    </select>
+                    <div class="form-text field-hint">Loose products can generate Weigh &amp; QR tickets. Packaged products are sold as whole pieces only.</div>
                 </div>
                 
                 <div class="mb-3">
-                    <label id="lblWhPrice" class="form-label text-muted" style="font-size: 0.9em;">Unit Price (₹)</label>
+                    <label id="lblWhPrice" class="form-label text-muted" style="font-size: 0.9em;">Price (₹)</label>
                     <input type="number" id="whPrice" step="any" name="price" class="form-control modern-input" placeholder="0.00" required>
                 </div>
                 
                 <div class="mb-4">
-                    <label id="lblWhStock" class="form-label text-muted" style="font-size: 0.9em;">Stock Quantity</label>
+                    <label id="lblWhStock" class="form-label text-muted" style="font-size: 0.9em;">Stock</label>
                     <input type="number" id="whStock" step="any" name="stock" class="form-control modern-input" placeholder="0" required>
-                </div>
-                
+                    <div class="form-text field-hint" id="whStockHelp">For updates, enter stock to add (0 allowed for type/price-only changes).</div>
+                </div>                
                 <button type="submit" class="btn modern-btn w-100">Save Product</button>
             </form>
         </div>
@@ -68,6 +82,7 @@
                     <thead class="table-light">
                         <tr>
                             <th>Product</th>
+                            <th>Type</th>
                             <th>Unit Price</th>
                             <th>Stock</th>
                             <th>Status</th>
@@ -76,10 +91,24 @@
                     </thead>
                     <tbody>
                         {% for p in products %}
+                        {% set ptype = (p.product_type or 'packaged')|lower %}
                         <tr>
                             <td class="align-middle fw-medium">{{ p.name }}</td>
-                            <td class="align-middle">₹{{ "{:.2f}".format(p.price) }}</td>
-                            <td class="align-middle">{{ p.stock }}</td>
+                            <td class="align-middle">
+                                {% if ptype == 'loose' %}
+                                <span class="badge bg-info text-dark">Loose</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Packaged</span>
+                                {% endif %}
+                            </td>
+                            <td class="align-middle">₹{{ "{:.2f}".format(p.price) }}{% if ptype == 'loose' %}/kg{% else %}/unit{% endif %}</td>
+                            <td class="align-middle">
+                                {% if ptype == 'loose' %}
+                                    {{ p.stock }} kg
+                                {% else %}
+                                    {{ p.stock|int if p.stock == (p.stock|int) else p.stock }} units
+                                {% endif %}
+                            </td>
                             <td class="align-middle">
                                 {% if p.stock <= 0 %}
                                     <span class="badge bg-danger">Out of Stock</span>
@@ -90,7 +119,8 @@
                                 {% endif %}
                             </td>
                             <td class="align-middle">
-                                <button type="button" class="btn btn-sm btn-primary" style="font-weight: bold; padding: 2px 8px; margin-right: 4px;" onclick="editProduct('{{ p.name }}', {{ p.price }})">✏️</button>
+                                <button type="button" class="btn btn-sm btn-primary" style="font-weight: bold; padding: 2px 8px; margin-right: 4px;"
+                                    onclick="editProduct('{{ p.name }}', {{ p.price }}, '{{ ptype }}')">✏️</button>
                                 <form action="/delete_product/{{ p.id }}" method="POST" class="d-inline" onsubmit="return confirm('Are you sure you want to delete this product?');">
                                     <button type="submit" class="btn btn-sm btn-danger" style="font-weight: bold; padding: 2px 8px;">X</button>
                                 </form>
@@ -98,7 +128,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="5" class="text-center text-muted py-4">No products in warehouse. Add some products to get started.</td>
+                            <td colspan="6" class="text-center text-muted py-4">No products in warehouse. Add some products to get started.</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -109,40 +139,42 @@
 </div>
 
 <script>
-document.getElementById('whProduct').addEventListener('input', function(e) {
-    const product = e.target.value.toLowerCase();
-    
-    // Smart Detection Keywords
-    const weightKeywords = ['tomato', 'potato', 'onion', 'carrot', 'spinach', 'broccoli', 'cabbage', 'apple', 'banana', 'orange', 'mango', 'grapes', 'strawberry', 'pineapple', 'rice', 'dal', 'sugar', 'flour', 'vegetable', 'fruit', 'salt', 'spices', 'meat', 'chicken'];
-    
-    const isWeightBased = weightKeywords.some(keyword => product.includes(keyword));
-    
+function applyTypeLabels(ptype) {
     const lblPrice = document.getElementById('lblWhPrice');
     const priceInput = document.getElementById('whPrice');
     const lblStock = document.getElementById('lblWhStock');
     const stockInput = document.getElementById('whStock');
-    
-    if (isWeightBased) {
+    if (ptype === 'loose') {
         lblPrice.innerText = 'Price per kg (₹)';
-        priceInput.placeholder = 'Enter Price per kg';
-        lblStock.innerText = 'Stock Quantity (kg)';
-        stockInput.placeholder = 'Enter Weight in kg';
+        priceInput.placeholder = 'e.g. 50';
+        lblStock.innerText = 'Stock (kg)';
+        stockInput.placeholder = 'e.g. 42.5';
+        stockInput.step = 'any';
+    } else if (ptype === 'packaged') {
+        lblPrice.innerText = 'Price per unit (₹)';
+        priceInput.placeholder = 'e.g. 40';
+        lblStock.innerText = 'Stock (units)';
+        stockInput.placeholder = 'e.g. 50';
+        stockInput.step = '1';
     } else {
-        lblPrice.innerText = 'Unit Price (₹)';
-        priceInput.placeholder = '0.00';
-        lblStock.innerText = 'Stock Quantity';
-        stockInput.placeholder = '0';
+        lblPrice.innerText = 'Price (₹)';
+        lblStock.innerText = 'Stock';
+        stockInput.step = 'any';
     }
+}
+
+document.getElementById('whProductType').addEventListener('change', function(e) {
+    applyTypeLabels(e.target.value);
 });
 
-function editProduct(name, price) {
+function editProduct(name, price, productType) {
     document.getElementById('whProduct').value = name;
     document.getElementById('whPrice').value = price;
-    document.getElementById('whStock').value = '';
+    document.getElementById('whStock').value = '0';
+    const typeSel = document.getElementById('whProductType');
+    typeSel.value = productType || 'packaged';
+    applyTypeLabels(typeSel.value);
     document.getElementById('whStock').focus();
-    
-    // Trigger input event to handle weight-based label changes
-    document.getElementById('whProduct').dispatchEvent(new Event('input'));
 }
 </script>
 

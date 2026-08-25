@@ -49,6 +49,7 @@
 
     <div class="pos-shell-tabs mb-3" role="tablist">
         <button type="button" class="pos-shell-tab active" data-pos-tab="checkout" data-i18n="pos.checkout">Checkout</button>
+        <button type="button" class="pos-shell-tab" data-pos-tab="qr-status">QR Status</button>
         <button type="button" class="pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
         <button type="button" class="pos-shell-tab" data-pos-tab="analytics" data-i18n="pos.analytics">Sales Analytics</button>
         <button type="button" class="pos-shell-tab" data-pos-tab="history" data-i18n="pos.history">Sales History</button>
@@ -356,6 +357,29 @@
                 </button>
             </div>
 
+            <!-- Manual AICA weigh-ticket token (before webcam QR scanning) -->
+            <div class="accordion mb-3" id="weighTicketAccordion">
+                <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                    <h2 class="accordion-header" id="headingWeighTicket">
+                        <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeighTicket" aria-expanded="false" aria-controls="collapseWeighTicket" style="font-size: 0.88rem; font-weight: 500;">
+                            <i class="bi bi-qr-code me-2"></i> Enter / Paste AICA QR Token
+                        </button>
+                    </h2>
+                    <div id="collapseWeighTicket" class="accordion-collapse collapse" aria-labelledby="headingWeighTicket" data-bs-parent="#weighTicketAccordion">
+                        <div class="accordion-body p-3">
+                            <p class="small text-muted mb-2">Paste the opaque ticket token from a weigh label (starts with <code>AICA1.</code>). Stock is not deducted until checkout.</p>
+                            <div class="input-group mb-2">
+                                <input type="text" id="weighTicketTokenInput" class="form-control modern-input m-0" placeholder="AICA1.…" autocomplete="off" spellcheck="false" style="height: 42px; font-size: 0.85rem;">
+                                <button class="btn btn-dark" type="button" id="resolveWeighTicketBtn" onclick="resolveWeighTicketToCart()" style="height: 42px; font-size: 0.85rem;">
+                                    Resolve &amp; Add
+                                </button>
+                            </div>
+                            <div id="weighTicketMsg" class="small d-none" role="status"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Manual lookup backup barcode -->
             <div class="accordion" id="manualSearchAccordion">
                 <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -434,22 +458,22 @@
                 </table>
             </div>
             
-            <div class="text-end mt-3 mb-4">
-                <h6 style="color: #64748b; margin-bottom: 8px;"><span data-i18n="pos.subtotal">Subtotal</span>: ₹<span id="cartSubtotal">0.00</span></h6>
-                <h6 style="color: #64748b; margin-bottom: 8px;"><span data-i18n="pos.totalTax">Total Tax (GST)</span>: ₹<span id="cartTax">0.00</span></h6>
-                <h5 style="color: #2d3748; font-weight: bold; margin-top: 10px;"><span data-i18n="pos.grandTotal">Grand Total</span>: ₹<span id="cartTotal">0.00</span></h5>
+            <div class="pos-cart-totals text-end mt-3 mb-4">
+                <h6 class="pos-cart-subline"><span data-i18n="pos.subtotal">Subtotal</span>: ₹<span id="cartSubtotal">0.00</span></h6>
+                <h6 class="pos-cart-subline"><span data-i18n="pos.totalTax">Total Tax (GST)</span>: ₹<span id="cartTax">0.00</span></h6>
+                <h5 class="pos-cart-grand"><span data-i18n="pos.grandTotal">Grand Total</span>: ₹<span id="cartTotal">0.00</span></h5>
             </div>
 
-            <button id="proceedBtn" class="btn btn-dark w-100 mb-3" style="display:none;" onclick="showPayment()" data-i18n="pos.proceedPay">Proceed to Pay</button>
+            <button id="proceedBtn" type="button" class="btn pos-proceed-btn w-100 mb-3" style="display:none;" onclick="showPayment()" data-i18n="pos.proceedPay">Proceed to Pay</button>
 
             <!-- Payment Section -->
-            <div id="paymentSection" style="display: none; background: #f8fafc; padding: 20px; border-radius: 14px;">
-                <h5 class="mb-3" data-i18n="pos.paymentMethod">Payment Method</h5>
+            <div id="paymentSection" class="pos-payment-panel" style="display: none;">
+                <h5 class="pos-payment-title mb-3" data-i18n="pos.paymentMethod">Payment Method</h5>
                 <div class="d-flex gap-2 mb-4">
-                    <button type="button" class="btn btn-outline-primary flex-fill active" id="btnCash" onclick="setPayment('cash')" data-i18n="pos.cash">Cash</button>
-                    <button type="button" class="btn btn-outline-primary flex-fill" id="btnCard" onclick="setPayment('card')" data-i18n="pos.card">Card</button>
+                    <button type="button" class="btn pos-pay-method flex-fill active" id="btnCash" onclick="setPayment('cash')" data-i18n="pos.cash">Cash</button>
+                    <button type="button" class="btn pos-pay-method flex-fill" id="btnCard" onclick="setPayment('card')" data-i18n="pos.card">Card</button>
                 </div>
-                <button type="button" class="btn btn-success w-100" style="font-weight: bold; font-size: 18px; padding: 12px;" onclick="submitTransaction()" data-i18n="pos.receivedPayment">
+                <button type="button" class="btn pos-receive-btn w-100" onclick="submitTransaction()" data-i18n="pos.receivedPayment">
                     Received Payment
                 </button>
             </div>
@@ -596,6 +620,46 @@
             <div id="posProductDetail"><p class="text-muted mb-0" data-i18n="pos.selectProduct">Select a product</p></div>
         </div>
     </div>
+
+    <!-- QR STATUS (view-only operational visibility) -->
+    <div class="pos-tab-panel" data-pos-panel="qr-status" hidden>
+        <div class="modern-card p-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <div>
+                    <h4 class="card-heading mb-1">QR Status</h4>
+                    <p class="text-muted mb-0 small">Organization weigh tickets — view only. Cancel from Weigh &amp; QR with a verified scan.</p>
+                </div>
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <select id="posQrStatusFilter" class="form-select form-select-sm" style="min-width:140px">
+                        <option value="all" selected>All</option>
+                        <option value="active">Active</option>
+                        <option value="redeemed">Redeemed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="posQrStatusRefresh">Refresh</button>
+                </div>
+            </div>
+            <div id="posQrStatusError" class="alert alert-danger d-none" role="alert"></div>
+            <div id="posQrStatusLoading" class="text-muted small mb-2 d-none">Loading tickets…</div>
+            <div id="posQrStatusEmpty" class="text-muted d-none">No QR tickets for this filter.</div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0 qr-ticket-table" id="posQrStatusTable" hidden>
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Weight</th>
+                            <th>Total</th>
+                            <th>Status</th>
+                            <th>Ref</th>
+                            <th>Created</th>
+                            <th>Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody id="posQrStatusBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     </div><!-- /posIntelligenceRoot -->
 
     <div id="posInvoiceModal" class="pos-modal" hidden>
@@ -622,6 +686,7 @@ let warehouseProducts = [];
 let cameraActive = true;
 let detectionPollTimer = null;
 let currentCandidate = null; // { name, confidence }
+let lastHandledQrEventId = null;
 let eventSource = null;
 
 function playScanBeep() {
@@ -716,12 +781,24 @@ function updateCvStatusUI(data) {
     const clearBtn = document.getElementById('cvClearBtn');
     if (!bar || !indicator) return;
 
+    // Webcam QR → existing resolve + cart path (debounced by event_id on the server).
+    // Skip when Weigh verified-cancel owns the shared OpenCV scanner.
+    const qrEvent = data.qr_event;
+    if (data.scan_purpose !== 'cancel' && qrEvent && qrEvent.token && qrEvent.event_id != null) {
+        if (qrEvent.event_id !== lastHandledQrEventId) {
+            lastHandledQrEventId = qrEvent.event_id;
+            resolveWeighTicketToCart(qrEvent.token, { fromCamera: true });
+        }
+    }
+
     const state = data.state || 'scanning';
     bar.className = `cv-status-bar cv-state-${state} position-absolute bottom-0 start-0 w-100 px-3 py-2 d-flex justify-content-between align-items-center gap-2`;
     indicator.textContent = data.message || 'Ready to scan';
 
     if (!data.model_ready && state === 'no_model') {
         meta.textContent = 'Train model required';
+    } else if (data.qr_detection_available && !data.ai_detection_available && state === 'preview') {
+        meta.textContent = 'QR ready';
     } else if (state === 'detected') {
         meta.textContent = 'Accepted';
     } else if (state === 'uncertain') {
@@ -760,7 +837,9 @@ function updateCvStatusUI(data) {
         if (!currentCandidate) {
             nameEl.textContent = '—';
             confEl.textContent = '—';
-            metaEl.textContent = 'Waiting for a trained product…';
+            metaEl.textContent = data.qr_detection_available
+                ? 'Show an AICA QR ticket, or a trained product if AI is available…'
+                : 'Waiting for a trained product…';
             addBtn.disabled = true;
             clearBtn.disabled = true;
         }
@@ -809,11 +888,22 @@ function addDetectedProductToCart(name, price, gstPct, confidence) {
     const foundProduct = warehouseProducts.find(p => p.name.toLowerCase() === name.toLowerCase());
     if (!foundProduct) return;
 
-    let existingIndex = cartItems.findIndex(item => item.product.toLowerCase() === name.toLowerCase());
+    // Do not merge into locked weigh-ticket lines
+    let existingIndex = cartItems.findIndex(item =>
+        item.product.toLowerCase() === name.toLowerCase() && item.source !== 'weigh_ticket'
+    );
     let currentCartQty = 0;
     if (existingIndex !== -1) {
         currentCartQty = cartItems[existingIndex].quantity;
     }
+    // Include weigh-ticket weight already in cart for the same product when checking stock UX
+    cartItems.forEach(item => {
+        if (item.product.toLowerCase() === name.toLowerCase()) {
+            if (existingIndex === -1 || item !== cartItems[existingIndex]) {
+                currentCartQty += Number(item.quantity) || 0;
+            }
+        }
+    });
 
     if (currentCartQty + 1 > foundProduct.stock) {
         return;
@@ -842,8 +932,137 @@ function addDetectedProductToCart(name, price, gstPct, confidence) {
     highlightCartRow(foundProduct.name);
 }
 
+function setWeighTicketMsg(text, isError) {
+    const el = document.getElementById('weighTicketMsg');
+    if (!el) return;
+    if (!text) {
+        el.className = 'small d-none';
+        el.textContent = '';
+        return;
+    }
+    el.textContent = text;
+    el.className = isError ? 'small text-danger' : 'small text-success';
+}
+
+async function resolveWeighTicketToCart(optionalToken, opts) {
+    opts = opts || {};
+    const fromCamera = !!opts.fromCamera;
+    const input = document.getElementById('weighTicketTokenInput');
+    const token = (optionalToken != null && String(optionalToken).trim() !== '')
+        ? String(optionalToken).trim()
+        : ((input && input.value ? input.value : '').trim());
+    setWeighTicketMsg('', false);
+    if (!token) {
+        if (!fromCamera) setWeighTicketMsg('Paste an AICA QR token first.', true);
+        return;
+    }
+    if (!token.startsWith('AICA1.')) {
+        const msg = 'Invalid AICA inventory QR code.';
+        if (fromCamera) {
+            showCameraQrFeedback(msg, true);
+        } else {
+            setWeighTicketMsg(msg, true);
+        }
+        return;
+    }
+    const dup = cartItems.find(item =>
+        item.source === 'weigh_ticket' && item.weigh_ticket_token === token
+    );
+    if (dup) {
+        const msg = 'This QR ticket is already in the cart.';
+        if (fromCamera) showCameraQrFeedback(msg, true);
+        else setWeighTicketMsg(msg, true);
+        return;
+    }
+    const btn = document.getElementById('resolveWeighTicketBtn');
+    if (btn && !fromCamera) btn.disabled = true;
+    try {
+        const res = await fetch('/api/weigh-tickets/resolve', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ public_token: token }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data.ok) {
+            const code = data.code || '';
+            let msg = data.error || 'Could not resolve this ticket.';
+            if (code === 'already_purchased') {
+                msg = 'This QR code has already been purchased.';
+            } else if (code === 'expired') {
+                msg = 'This QR code has expired.';
+            } else if (code === 'cancelled') {
+                msg = 'This QR code was cancelled.';
+            } else if (code === 'not_found') {
+                msg = 'This inventory ticket is not available for this organization.';
+            }
+            if (fromCamera) showCameraQrFeedback(msg, true);
+            else setWeighTicketMsg(msg, true);
+            return;
+        }
+        const line = data.line || {};
+        const ticket = data.ticket || {};
+        const publicToken = line.public_token || token;
+        if (cartItems.some(item => item.source === 'weigh_ticket' && item.weigh_ticket_token === publicToken)) {
+            const msg = 'This QR ticket is already in the cart.';
+            if (fromCamera) showCameraQrFeedback(msg, true);
+            else setWeighTicketMsg(msg, true);
+            return;
+        }
+        cartItems.push({
+            product: line.product || ticket.product_name,
+            price: Number(line.unit_price),
+            quantity: Number(line.weight),
+            isWeight: true,
+            source: 'weigh_ticket',
+            weigh_ticket_token: publicToken,
+            ticket_id: ticket.id || line.product_id,
+            unit: line.unit || 'kg',
+            locked: true,
+        });
+        if (input && !fromCamera) input.value = '';
+        const okMsg = fromCamera
+            ? `QR detected · ${line.product || ticket.product_name} — ${line.weight} ${line.unit || 'kg'} · ₹${Number(line.total_amount).toFixed(2)} · Added to cart`
+            : 'Weigh ticket added to cart (ACTIVE — stock unchanged until checkout).';
+        if (fromCamera) showCameraQrFeedback(okMsg, false);
+        else setWeighTicketMsg(okMsg, false);
+        playScanBeep();
+        renderCart();
+        highlightCartRow(line.product || ticket.product_name);
+        const alertBox = document.getElementById('lastScannedAlert');
+        if (alertBox) {
+            document.getElementById('lastScannedName').innerText = line.product || ticket.product_name;
+            document.getElementById('lastScannedMeta').innerText =
+                `QR ticket · ${line.weight} ${line.unit || 'kg'} · ₹${Number(line.total_amount).toFixed(2)}`;
+            alertBox.classList.remove('d-none');
+            alertBox.classList.add('d-flex');
+        }
+    } catch (e) {
+        const msg = 'Network error while resolving the ticket.';
+        if (fromCamera) showCameraQrFeedback(msg, true);
+        else setWeighTicketMsg(msg, true);
+    } finally {
+        if (btn && !fromCamera) btn.disabled = false;
+    }
+}
+
+function showCameraQrFeedback(text, isError) {
+    setWeighTicketMsg(text, isError);
+    const indicator = document.getElementById('scanningIndicator');
+    const metaEl = document.getElementById('cvDetectMeta');
+    const nameEl = document.getElementById('cvDetectName');
+    if (indicator) indicator.textContent = isError ? 'QR ticket issue' : 'QR detected';
+    if (nameEl) nameEl.textContent = isError ? 'QR ticket' : 'QR ticket';
+    if (metaEl) metaEl.textContent = text;
+}
+
 function isWeightBasedProduct(productName) {
-    const p = productName.toLowerCase();
+    const found = warehouseProducts.find(p => p.name.toLowerCase() === String(productName || '').toLowerCase());
+    if (found && found.product_type) {
+        return found.product_type === 'loose' || found.is_loose === true;
+    }
+    // Fallback for legacy clients without product_type (should be rare after API update)
+    const p = String(productName || '').toLowerCase();
     const weightKeywords = ['tomato', 'potato', 'onion', 'carrot', 'spinach', 'broccoli', 'cabbage', 'apple', 'banana', 'orange', 'mango', 'grapes', 'strawberry', 'pineapple', 'rice', 'dal', 'sugar', 'flour', 'vegetable', 'fruit', 'salt', 'spices', 'meat', 'chicken'];
     return weightKeywords.some(keyword => p.includes(keyword));
 }
@@ -1101,14 +1320,14 @@ function updateScannerModeUI(isSimulated, cameraError, cameraIndex, cameraPowere
         statusBadge.className = cameraError ? "badge bg-danger" : "badge bg-secondary";
     } else {
         select.value = 'physical';
-        badge.innerText = (aiDetectionAvailable === false) ? 'Preview only' : 'Scanning';
+        badge.innerText = (aiDetectionAvailable === false) ? 'QR ready · Preview' : 'Scanning';
         badge.className = (aiDetectionAvailable === false) ? 'badge bg-warning text-dark' : 'badge bg-success';
         if (indexSelect) indexSelect.style.display = 'inline-block';
         if (cameraError) {
             statusBadge.innerText = "Camera Error";
             statusBadge.className = "badge bg-danger";
         } else if (aiDetectionAvailable === false) {
-            statusBadge.innerText = "Camera ON · AI detection unavailable";
+            statusBadge.innerText = "Camera ON · QR ready · AI unavailable";
             statusBadge.className = "badge bg-warning text-dark";
         } else if (aiDetectionAvailable === true) {
             statusBadge.innerText = "Camera ON · AI detection ready";
@@ -1288,6 +1507,12 @@ document.getElementById('addToCartForm').addEventListener('submit', function(e) 
         alert('Product not found in warehouse.');
         return;
     }
+
+    const packaged = !(foundProduct.product_type === 'loose' || foundProduct.is_loose === true);
+    if (packaged && !Number.isInteger(quantity)) {
+        alert('Packaged products must use whole-number quantities (pieces).');
+        return;
+    }
     
     let currentCartQty = 0;
     cartItems.forEach(item => {
@@ -1354,21 +1579,27 @@ function renderCart() {
         
         const step = qtyStepForItem(item);
         const qtyLabel = formatCartQty(qty);
-        const unitHint = item.isWeight ? '<span class="text-muted" style="font-size:0.72rem;margin-left:4px;">kg</span>' : '';
-        
-        tbody.innerHTML += `
-            <tr>
-                <td class="align-middle">${item.product}</td>
-                <td class="align-middle">₹${item.price.toFixed(2)}</td>
-                <td class="align-middle" style="min-width: 148px;">
-                    <div class="d-flex align-items-center gap-1">
+        const unitHint = item.isWeight ? `<span class="text-muted" style="font-size:0.72rem;margin-left:4px;">${item.unit || 'kg'}</span>` : '';
+        const ticketBadge = item.source === 'weigh_ticket'
+            ? '<span class="badge bg-success ms-1" style="font-size:0.65rem;">QR TICKET</span>'
+            : '';
+        const qtyControls = item.source === 'weigh_ticket'
+            ? `<span class="align-middle fw-semibold">${qtyLabel}${unitHint}</span>`
+            : `<div class="d-flex align-items-center gap-1">
                         <div class="pos-qty-control" role="group" aria-label="Quantity">
                             <button type="button" class="pos-qty-btn" onclick="updateQty(${index}, ${qty - step})" aria-label="Decrease quantity">−</button>
                             <input type="number" class="form-control pos-qty-input" min="${step}" step="${step}" value="${qtyLabel}" aria-label="Quantity" onchange="updateQty(${index}, this.value)">
                             <button type="button" class="pos-qty-btn" onclick="updateQty(${index}, ${qty + step})" aria-label="Increase quantity">+</button>
                         </div>
                         ${unitHint}
-                    </div>
+                    </div>`;
+        
+        tbody.innerHTML += `
+            <tr>
+                <td class="align-middle">${item.product}${ticketBadge}</td>
+                <td class="align-middle">₹${item.price.toFixed(2)}</td>
+                <td class="align-middle" style="min-width: 148px;">
+                    ${qtyControls}
                 </td>
                 <td class="align-middle" style="font-size: 0.9em; color: var(--text-muted, #64748b);">₹${itemGst.toFixed(2)} (${gstRate}%)</td>
                 <td class="align-middle" style="font-weight: 500;">₹${itemTotal.toFixed(2)}</td>
@@ -1392,6 +1623,11 @@ function renderCart() {
 }
 
 function updateQty(index, newQty) {
+    if (cartItems[index] && cartItems[index].source === 'weigh_ticket') {
+        alert('Weigh ticket quantity is fixed by the QR ticket and cannot be changed.');
+        renderCart();
+        return;
+    }
     let val = parseFloat(newQty);
     if (isNaN(val) || val <= 0) val = 1;
     if (!cartItems[index].isWeight) val = parseInt(val);
@@ -1442,11 +1678,17 @@ function setPayment(method) {
 async function submitTransaction() {
     if (cartItems.length === 0) return;
 
-    const payload = cartItems.map(item => ({
-        product: item.product,
-        price: Number(item.price),
-        quantity: Number(item.quantity)
-    }));
+    const payload = cartItems.map(item => {
+        const row = {
+            product: item.product,
+            price: Number(item.price),
+            quantity: Number(item.quantity),
+        };
+        if (item.source === 'weigh_ticket' && item.weigh_ticket_token) {
+            row.weigh_ticket_token = item.weigh_ticket_token;
+        }
+        return row;
+    });
 
     const response = await fetch('/add_multiple', {
         method: 'POST',
@@ -1505,8 +1747,88 @@ async function submitTransaction() {
         }
 }
 </script>
+<script>
+(function () {
+    function fmtMoney(n) {
+        const v = Number(n);
+        if (!Number.isFinite(v)) return '—';
+        return '₹' + v.toFixed(2);
+    }
+    function fmtWhen(iso) {
+        if (!iso) return '—';
+        return String(iso).replace('T', ' ').replace('Z', '');
+    }
+    function statusBadge(ticket) {
+        const st = String(ticket.status || '').toLowerCase();
+        const label = ticket.status_label || (st === 'consumed' ? 'Redeemed' : st === 'cancelled' || st === 'expired' ? 'Cancelled' : 'Active');
+        let cls = 'qr-badge qr-badge-active';
+        if (st === 'consumed') cls = 'qr-badge qr-badge-redeemed';
+        else if (st === 'cancelled' || st === 'expired') cls = 'qr-badge qr-badge-cancelled';
+        return '<span class="' + cls + '">' + label + '</span>';
+    }
+    function updatedCell(t) {
+        if (t.consumed_at) return 'Redeemed ' + fmtWhen(t.consumed_at);
+        if (t.cancelled_at) return 'Cancelled ' + fmtWhen(t.cancelled_at);
+        return '—';
+    }
+
+    async function loadPosQrStatus() {
+        const filter = document.getElementById('posQrStatusFilter');
+        const err = document.getElementById('posQrStatusError');
+        const loading = document.getElementById('posQrStatusLoading');
+        const empty = document.getElementById('posQrStatusEmpty');
+        const table = document.getElementById('posQrStatusTable');
+        const body = document.getElementById('posQrStatusBody');
+        if (!body) return;
+        err.classList.add('d-none');
+        empty.classList.add('d-none');
+        table.hidden = true;
+        loading.classList.remove('d-none');
+        try {
+            const status = (filter && filter.value) || 'all';
+            const res = await fetch('/api/weigh-tickets?status=' + encodeURIComponent(status) + '&limit=100', {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' },
+            });
+            const data = await res.json().catch(function () { return {}; });
+            if (!res.ok || !data.ok) {
+                err.textContent = (data && data.error) || 'Could not load QR status.';
+                err.classList.remove('d-none');
+                return;
+            }
+            const tickets = data.tickets || [];
+            if (!tickets.length) {
+                empty.classList.remove('d-none');
+                body.innerHTML = '';
+                return;
+            }
+            body.innerHTML = tickets.map(function (t) {
+                return '<tr>' +
+                    '<td>' + (t.product_name_snapshot || t.product_name || '—') + '</td>' +
+                    '<td>' + (t.weight != null ? t.weight : '—') + ' ' + (t.unit || 'kg') + '</td>' +
+                    '<td>' + fmtMoney(t.total_amount_snapshot != null ? t.total_amount_snapshot : t.total_amount) + '</td>' +
+                    '<td>' + statusBadge(t) + '</td>' +
+                    '<td class="font-monospace small">' + (t.token_ref || '—') + '</td>' +
+                    '<td class="small">' + fmtWhen(t.created_at) + '</td>' +
+                    '<td class="small">' + updatedCell(t) + '</td>' +
+                    '</tr>';
+            }).join('');
+            table.hidden = false;
+        } catch (e) {
+            err.textContent = 'Network error loading QR status.';
+            err.classList.remove('d-none');
+        } finally {
+            loading.classList.add('d-none');
+        }
+    }
+
+    window.loadPosQrStatus = loadPosQrStatus;
+    document.getElementById('posQrStatusRefresh')?.addEventListener('click', loadPosQrStatus);
+    document.getElementById('posQrStatusFilter')?.addEventListener('change', loadPosQrStatus);
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="/static/pos_intelligence.js?v=2"></script>
+<script src="/static/pos_intelligence.js?v=3"></script>
 
 </body>
 </html>

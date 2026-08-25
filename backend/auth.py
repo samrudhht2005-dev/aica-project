@@ -131,15 +131,15 @@ def clear_session_cookie(response: Response):
 
 def get_ui_mode(request: Request) -> str | None:
     mode = (request.cookies.get(UI_MODE_COOKIE) or "").strip().lower()
-    if mode in ("pos", "org"):
+    if mode in ("pos", "org", "weigh"):
         return mode
     return None
 
 
 def set_ui_mode_cookie(response: Response, mode: str):
     mode = (mode or "").strip().lower()
-    if mode not in ("pos", "org"):
-        raise ValueError("ui mode must be pos or org")
+    if mode not in ("pos", "org", "weigh"):
+        raise ValueError("ui mode must be pos, org, or weigh")
     response.set_cookie(
         key=UI_MODE_COOKIE,
         value=mode,

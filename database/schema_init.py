@@ -113,6 +113,8 @@ def _run_portable_indexes(eng) -> None:
         "ON products(org_id, name) WHERE org_id IS NOT NULL",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_org_code "
         "ON employees(org_id, employee_id) WHERE org_id IS NOT NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_weigh_tickets_public_token "
+        "ON weigh_tickets(public_token)",
     )
     with eng.begin() as conn:
         for sql in statements:

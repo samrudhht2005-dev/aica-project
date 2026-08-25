@@ -1,7 +1,8 @@
 """Safe, additive schema upgrades. Never drops tables or deletes rows.
 
 PostgreSQL path keeps historical DDL for existing deployments.
-SQLite path relies on SQLAlchemy create_all (current models) plus portable indexes.
+SQLite path relies on SQLAlchemy create_all (current models) plus portable
+indexes and additive column adds for existing files.
 """
 from sqlalchemy import inspect, text
 from database.db import engine
@@ -45,12 +46,48 @@ def _ensure_portable_unique_indexes(conn):
             ))
     except Exception as e:
         log.warning("Skipped unique employee index (existing duplicates): %s", e)
+    # Weigh tickets: ORM unique=True creates the constraint on fresh DBs;
+    # this index is a safe no-op / reinforcement when the table already exists.
+    try:
+        with conn.begin_nested():
+            conn.execute(text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_weigh_tickets_public_token "
+                "ON weigh_tickets(public_token)"
+            ))
+    except Exception as e:
+        log.warning("Skipped weigh_tickets public_token index: %s", e)
+
+
+def _ensure_product_type_column(conn, *, dialect: str):
+    """Additive product_type column. Existing rows default to 'packaged'."""
+    insp = inspect(conn)
+    if "products" not in insp.get_table_names():
+        return
+    cols = {c["name"] for c in insp.get_columns("products")}
+    if "product_type" in cols:
+        return
+    if dialect == "sqlite":
+        # SQLite: DEFAULT applies to existing rows on ADD COLUMN.
+        conn.execute(text(
+            "ALTER TABLE products ADD COLUMN product_type VARCHAR NOT NULL DEFAULT 'packaged'"
+        ))
+    else:
+        conn.execute(text(
+            "ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type VARCHAR NOT NULL DEFAULT 'packaged'"
+        ))
+    # Belt-and-suspenders for any NULL leftovers on older dialects.
+    conn.execute(text(
+        "UPDATE products SET product_type = 'packaged' "
+        "WHERE product_type IS NULL OR TRIM(product_type) = ''"
+    ))
+    log.info("Added products.product_type (default packaged for existing rows).")
 
 
 def _upgrade_sqlite():
     with engine.begin() as conn:
+        _ensure_product_type_column(conn, dialect="sqlite")
         _ensure_portable_unique_indexes(conn)
-    log.info("AICA schema upgrade complete (sqlite; additive indexes only).")
+    log.info("AICA schema upgrade complete (sqlite; additive columns + indexes).")
 
 
 def _upgrade_postgresql():
@@ -82,6 +119,8 @@ def _upgrade_postgresql():
         if "org_id" not in prod_cols:
             conn.execute(text("ALTER TABLE products ADD COLUMN IF NOT EXISTS org_id INTEGER REFERENCES organizations(id)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_products_org_id ON products(org_id)"))
+
+        _ensure_product_type_column(conn, dialect="postgresql")
 
         # Allow same product name in different organizations
         conn.execute(text("ALTER TABLE products DROP CONSTRAINT IF EXISTS products_name_key"))
