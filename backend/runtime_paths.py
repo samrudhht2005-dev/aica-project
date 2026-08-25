@@ -34,7 +34,8 @@ def app_release_info() -> dict:
         for path in candidates:
             if path.is_file():
                 import json
-                data = json.loads(path.read_text(encoding="utf-8"))
+                # utf-8-sig accepts both BOM and BOM-less UTF-8 (Windows writers often add BOM).
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
                 version = str(data.get("version") or version)
                 build = str(data.get("build") or build)
                 channel = str(data.get("channel") or channel)

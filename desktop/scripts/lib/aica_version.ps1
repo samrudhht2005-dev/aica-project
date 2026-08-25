@@ -176,7 +176,11 @@ function Update-AicaVersionBuildStamp {
     $path = Get-AicaVersionJsonPath -Root $Root
     $cfg = Read-AicaVersionConfig -Root $Root
     $cfg.build = $BuildStamp
-    ($cfg | ConvertTo-Json -Depth 8) | Set-Content -Path $path -Encoding UTF8
+    # UTF-8 without BOM — BOM breaks Python json.loads(..., encoding="utf-8").
+    $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    $json = ($cfg | ConvertTo-Json -Depth 8)
+    if (-not $json.EndsWith("`n")) { $json = $json + "`n" }
+    [System.IO.File]::WriteAllText($path, $json, $utf8NoBom)
     return $BuildStamp
 }
 
