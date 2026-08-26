@@ -62,7 +62,7 @@ def extract_vad_speech_segment(pcm: bytes) -> tuple[bytes, bool]:
     """
     if not pcm:
         return pcm, False
-    vad = VoiceActivityDetector(aggressiveness=2)
+    vad = VoiceActivityDetector(aggressiveness=1)
     frame_bytes = FRAME_SAMPLES * 2
     min_speech_s = 0.28
     max_speech_s = 2.2

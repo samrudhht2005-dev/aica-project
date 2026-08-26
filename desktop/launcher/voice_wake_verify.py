@@ -104,10 +104,13 @@ def try_wake_whisper_only(
             duration_s=round(duration, 2),
             ms=result.get("latency_ms"),
         )
-        if verify_wake_transcript(text, allow_here_mishear=False):
+        if verify_wake_transcript(text, allow_here_mishear=True):
             conf = result.get("confidence")
             score = float(conf) if conf is not None else 0.75
-            return True, score, "whisper_verify", text
+            method = "whisper_verify"
+            if is_standalone_here_mishear(text):
+                method = "whisper_verify_here"
+            return True, score, method, text
     except Exception as e:
         vlog("wake_whisper_verify_error", error=str(e))
     return False, margin, "none", ""
@@ -167,7 +170,7 @@ def evaluate_wake_pcm(pcm: bytes) -> dict:
         return {
             "wake_detected": fired,
             "wake_embedding_detected": method == "embedding",
-            "wake_transcript_detected": method == "whisper_verify",
+            "wake_transcript_detected": str(method).startswith("whisper_verify"),
             "wake_embedding_margin": margin,
             "wake_verify_transcript": wx,
             "wake_backend": backend,

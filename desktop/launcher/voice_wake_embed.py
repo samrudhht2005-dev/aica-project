@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import threading
 import time
+from collections import deque
 from typing import Callable
 
 import numpy as np
@@ -43,7 +44,7 @@ class EmbeddingWakeDetector:
         self._personal = None  # PersonalWakeProfile | None — lazy
         self._hard_neg = None  # HardNegWakeProfile | None — lazy
         self._personal_enabled = False
-        self._vad = VoiceActivityDetector(aggressiveness=2)
+        self._vad = VoiceActivityDetector(aggressiveness=1)
         self._cooldown_until = 0.0
         self._verify_guard = threading.Lock()
         self._verify_in_flight = False
@@ -188,10 +189,13 @@ class EmbeddingWakeDetector:
         min_speech_s = 0.28
         silence_frames = 0
         silence_limit = 10
+        # Keep ~300 ms of pre-speech audio so the onset of "Hey" is not clipped.
+        pre_roll: deque[bytes] = deque(maxlen=10)
 
         def handle_frame(pcm: bytes) -> None:
             nonlocal in_speech, speech_started, silence_frames
             if time.time() < self._cooldown_until:
+                pre_roll.clear()
                 return
 
             if self._vad.is_speech(pcm):
@@ -199,6 +203,9 @@ class EmbeddingWakeDetector:
                     in_speech = True
                     speech_started = time.time()
                     pcm_buffer.clear()
+                    for prior in pre_roll:
+                        pcm_buffer.extend(prior)
+                    pre_roll.clear()
                     silence_frames = 0
                 pcm_buffer.extend(pcm)
                 silence_frames = 0
@@ -209,6 +216,7 @@ class EmbeddingWakeDetector:
                 return
 
             if not in_speech:
+                pre_roll.append(pcm)
                 return
 
             pcm_buffer.extend(pcm)

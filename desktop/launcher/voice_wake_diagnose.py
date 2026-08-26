@@ -137,7 +137,7 @@ def trace_wake_activation(pcm: bytes, *, run_whisper: bool = True) -> dict[str, 
             "reason": reason,
             "whisper_transcript": whisper_text,
             "whisper_would_fire": whisper_would_fire,
-            "detect_wake_on_transcript": verify_wake_transcript(whisper_text, allow_here_mishear=False)
+            "detect_wake_on_transcript": verify_wake_transcript(whisper_text, allow_here_mishear=True)
             if whisper_text
             else False,
         },
