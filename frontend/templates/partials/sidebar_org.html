@@ -1,60 +1,33 @@
-<div class="sidebar sidebar-org" data-sidebar-mode="org">
-    <div class="logo-container">
-        <i class="bi bi-robot logo-icon"></i>
-        <h2 class="logo">AICA</h2>
-    </div>
+{% set current_workspace = 'org' %}
+{% include "partials/topbar.html" %}
 
+<aside class="sidebar sidebar-org aica-rail" data-sidebar-mode="org">
+    <div class="aica-rail-label">Operate</div>
     <div class="nav-links" id="aicaNavLinks">
         <a href="/" class="{% if active_page == 'dashboard' %}active{% endif %}" data-i18n="nav.dashboard"><i class="bi bi-grid-1x2-fill"></i> <span>Dashboard</span></a>
+        <a href="/warehouse" class="warehouse-link {% if active_page == 'warehouse' %}active{% endif %}">
+            <i class="bi bi-box-seam-fill"></i>
+            <span data-i18n="nav.warehouse">Warehouse</span>
+            {% if has_low_stock %}<span class="alert-badge" title="Low Stock Alert"><i class="bi bi-exclamation-triangle-fill"></i></span>{% endif %}
+        </a>
+
+        <div class="aica-rail-sep" aria-hidden="true"></div>
+        <div class="aica-rail-label">Finance</div>
         <a href="/sales" class="{% if active_page == 'sales' %}active{% endif %}" data-i18n="nav.sales"><i class="bi bi-graph-up"></i> <span>Sales</span></a>
         <a href="/expenses" class="{% if active_page == 'expenses' %}active{% endif %}" data-i18n="nav.expenses"><i class="bi bi-wallet2"></i> <span>Expenses</span></a>
         <a href="/employees" class="{% if active_page == 'employees' %}active{% endif %}" data-i18n="nav.payroll"><i class="bi bi-people-fill"></i> <span>Payroll</span></a>
-        <a href="/assets" class="{% if active_page == 'assets' %}active{% endif %}" data-i18n="nav.assets"><i class="bi bi-building-fill"></i> <span>Fixed Assets</span></a>
+        <a href="/assets" class="{% if active_page == 'assets' %}active{% endif %}" data-i18n="nav.assets"><i class="bi bi-building-fill"></i> <span>Assets</span></a>
         <a href="/gst" class="{% if active_page == 'gst' %}active{% endif %}" data-i18n="nav.gst"><i class="bi bi-receipt-cutoff"></i> <span>GST &amp; ITC</span></a>
         <a href="/income-tax" class="{% if active_page == 'income-tax' %}active{% endif %}" data-i18n="nav.incomeTax"><i class="bi bi-calculator-fill"></i> <span>Income Tax</span></a>
-        <a href="/tax-optimization" class="{% if active_page == 'tax-optimization' %}active{% endif %}" data-i18n="nav.optimization"><i class="bi bi-lightning-charge-fill"></i> <span>AI Optimization</span></a>
+
+        <div class="aica-rail-sep" aria-hidden="true"></div>
+        <div class="aica-rail-label">Intelligence</div>
+        <a href="/tax-optimization" class="{% if active_page == 'tax-optimization' %}active{% endif %}" data-i18n="nav.optimization"><i class="bi bi-lightning-charge-fill"></i> <span>Optimization</span></a>
         <a href="/compliance" class="{% if active_page == 'compliance' %}active{% endif %}" data-i18n="nav.compliance"><i class="bi bi-calendar-event-fill"></i> <span>Compliance</span></a>
         <a href="/forecasting" class="{% if active_page == 'forecasting' %}active{% endif %}" data-i18n="nav.forecasting"><i class="bi bi-graph-up-arrow"></i> <span>Forecasting</span></a>
-        <a href="/what-if" class="{% if active_page == 'what-if' %}active{% endif %}" data-i18n="nav.whatIf"><i class="bi bi-question-diamond-fill"></i> <span>What-If Simulator</span></a>
+        <a href="/what-if" class="{% if active_page == 'what-if' %}active{% endif %}" data-i18n="nav.whatIf"><i class="bi bi-question-diamond-fill"></i> <span>What-If</span></a>
         <a href="/reports" class="{% if active_page == 'reports' %}active{% endif %}" data-i18n="nav.reports"><i class="bi bi-file-earmark-bar-graph-fill"></i> <span>Reports</span></a>
-        <a href="/warehouse" class="warehouse-link d-flex align-items-center {% if active_page == 'warehouse' %}active{% endif %}">
-            <i class="bi bi-box-seam-fill"></i>
-            <span style="flex-grow: 1;" data-i18n="nav.warehouse">Warehouse</span>
-            {% if has_low_stock %}<span class="alert-badge" title="Low Stock Alert"><i class="bi bi-exclamation-triangle-fill"></i></span>{% endif %}
-        </a>
-        <a href="/select-interface" class="" data-i18n="nav.changeWorkspace">
-            <i class="bi bi-grid-3x3-gap"></i> <span>All workspaces</span>
-        </a>
     </div>
-
-    <div class="sidebar-footer">
-        {% set current_workspace = 'org' %}
-        {% include "partials/workspace_switcher.html" %}
-
-        {% if auth_user %}
-        <div class="sidebar-profile" id="sidebarProfile">
-            <button type="button" class="sidebar-profile-btn" id="profileMenuBtn" aria-expanded="false">
-                <span class="sidebar-avatar">{{ (auth_user.full_name or auth_user.email or 'U')[0] | upper }}</span>
-                <span class="sidebar-profile-copy">
-                    <strong>{{ auth_user.full_name or 'Account' }}</strong>
-                    <small>{{ auth_user.email }}</small>
-                </span>
-                <i class="bi bi-gear sidebar-gear"></i>
-            </button>
-            <div class="sidebar-profile-menu" id="profileMenu" hidden>
-                <a href="/profile"><i class="bi bi-person"></i> <span data-i18n="nav.profile">Edit Profile</span></a>
-                <a href="/organization"><i class="bi bi-building"></i> <span data-i18n="nav.orgSettings">Edit Organization Details</span></a>
-                <a href="/logout"><i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log Out</span></a>
-            </div>
-        </div>
-        {% elif org %}
-        <div class="sidebar-profile">
-            <div class="sidebar-profile-copy px-2 pb-2">
-                <strong>{{ org.name }}</strong>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
+</aside>
 
 {% include "partials/chrome.html" %}

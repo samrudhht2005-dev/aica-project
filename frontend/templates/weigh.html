@@ -1,16 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AICA — Weigh &amp; Generate QR</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     <style>
         .weigh-estimate {
             background: var(--surface-2, rgba(0,0,0,.04));
@@ -176,8 +177,12 @@
 {% include "partials/sidebar_weigh.html" %}
 
 <div class="main-content fade-in-up">
-    <h1 class="page-title" style="font-weight: 800; font-size: 36px; margin-bottom: 8px;" data-i18n="pages.weighTitle">Weigh &amp; Generate QR</h1>
-    <p class="text-muted mb-3" data-i18n="pages.weighSub">Create printable QR weigh tickets for loose inventory. Stock is not deducted until POS checkout.</p>
+    <header class="page-mast">
+        <div>
+            <h1 class="page-mast-title" data-i18n="pages.weighTitle">Weigh &amp; Generate QR</h1>
+            <p class="page-mast-sub" data-i18n="pages.weighSub">Create printable QR weigh tickets for loose inventory. Stock is not deducted until POS checkout.</p>
+        </div>
+    </header>
 
     <div class="weigh-tabs mb-4" role="tablist">
         <button type="button" class="weigh-tab active" data-weigh-tab="generate" id="weighTabGenerate">Generate QR</button>
@@ -185,8 +190,8 @@
     </div>
 
     <div id="weighPanelGenerate" data-weigh-panel="generate">
-    <div class="dashboard-grid" style="grid-template-columns: 1fr 1fr;">
-        <div class="modern-card hover-lift">
+    <div class="weigh-stage">
+        <div class="weigh-console">
             <h4 class="card-heading">Weigh product</h4>
             {% if not products %}
             <div class="alert alert-warning mb-0">
@@ -252,7 +257,7 @@
             {% endif %}
         </div>
 
-        <div class="modern-card hover-lift">
+        <div class="weigh-canvas">
             <h4 class="card-heading">Ticket label</h4>
             <div id="labelEmpty" class="text-muted">
                 Generate a ticket to preview the QR label and download a printable PDF.
@@ -288,7 +293,7 @@
     </div><!-- /generate -->
 
     <div id="weighPanelHistory" data-weigh-panel="history" hidden>
-        <div class="modern-card hover-lift">
+        <div class="weigh-history-plane">
             <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
                 <div>
                     <h4 class="card-heading mb-1">QR History</h4>

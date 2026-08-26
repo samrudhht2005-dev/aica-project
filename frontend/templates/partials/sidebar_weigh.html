@@ -1,49 +1,16 @@
-<div class="sidebar sidebar-weigh" data-sidebar-mode="weigh">
-    <div class="logo-container">
-        <i class="bi bi-qr-code logo-icon"></i>
-        <h2 class="logo">AICA Weigh</h2>
-    </div>
+{% set current_workspace = 'weigh' %}
+{% include "partials/topbar.html" %}
 
+<aside class="sidebar sidebar-weigh aica-rail" data-sidebar-mode="weigh">
+    <div class="aica-rail-label">Weigh</div>
     <div class="nav-links" id="aicaNavLinks">
         <a href="/weigh" class="{% if active_page == 'weigh' %}active{% endif %}" data-i18n="nav.weighGenerate">
-            <i class="bi bi-upc-scan"></i> <span>Generate QR</span>
+            <i class="bi bi-upc-scan"></i> <span>Generate</span>
         </a>
         <a href="/weigh#history" class="{% if active_page == 'weigh-history' %}active{% endif %}" data-i18n="nav.weighHistory">
-            <i class="bi bi-clock-history"></i> <span>QR History</span>
-        </a>
-        <a href="/select-interface" class="" data-i18n="nav.changeWorkspace">
-            <i class="bi bi-grid-3x3-gap"></i> <span>All workspaces</span>
+            <i class="bi bi-clock-history"></i> <span>History</span>
         </a>
     </div>
-
-    <div class="sidebar-footer">
-        {% set current_workspace = 'weigh' %}
-        {% include "partials/workspace_switcher.html" %}
-
-        {% if auth_user %}
-        <div class="sidebar-profile" id="sidebarProfile">
-            <button type="button" class="sidebar-profile-btn" id="profileMenuBtn" aria-expanded="false">
-                <span class="sidebar-avatar">{{ (auth_user.full_name or auth_user.email or 'U')[0] | upper }}</span>
-                <span class="sidebar-profile-copy">
-                    <strong>{{ auth_user.full_name or 'Account' }}</strong>
-                    <small>{{ auth_user.email }}</small>
-                </span>
-                <i class="bi bi-gear sidebar-gear"></i>
-            </button>
-            <div class="sidebar-profile-menu" id="profileMenu" hidden>
-                <a href="/profile"><i class="bi bi-person"></i> <span data-i18n="nav.profile">Edit Profile</span></a>
-                <a href="/organization"><i class="bi bi-building"></i> <span data-i18n="nav.orgSettings">Edit Organization Details</span></a>
-                <a href="/logout"><i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log Out</span></a>
-            </div>
-        </div>
-        {% elif org %}
-        <div class="sidebar-profile">
-            <div class="sidebar-profile-copy px-2 pb-2">
-                <strong>{{ org.name }}</strong>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-</div>
+</aside>
 
 {% include "partials/chrome.html" %}

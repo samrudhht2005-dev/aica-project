@@ -1,25 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AICA Warehouse</title>
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Outfit + Cormorant Garamond -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Bootstrap and Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
 </head>
 <body>
 {% include "partials/sidebar.html" %}
 
 <div class="main-content fade-in-up">
-    <h1 class="page-title" style="font-weight: 800; font-size: 36px; margin-bottom: 24px;" data-i18n="pages.warehouseTitle">Warehouse Management</h1>
+    <header class="page-mast">
+        <div>
+            <h1 class="page-mast-title" data-i18n="pages.warehouseTitle">Warehouse Management</h1>
+            <p class="page-mast-sub">Add inventory, set loose vs packaged types, and keep stock ready for POS and Weigh &amp; QR.</p>
+        </div>
+    </header>
     
     {% if request.query_params.get('error') %}
     <div class="alert alert-danger mb-4" role="alert">{{ request.query_params.get('error') }}</div>
@@ -39,9 +45,8 @@
     </div>
     {% endif %}
     
-    <div class="dashboard-grid" style="grid-template-columns: 1fr 2fr;">
-        <!-- Add Product Form -->
-        <div class="modern-card hover-lift">
+    <div class="wh-plane">
+        <div class="wh-form-pane wh-form-panel">
             <h4 class="card-heading">Add / Update Product</h4>
             <form id="addProductForm" action="/add_product" method="POST">
                 <div class="mb-3">
@@ -73,8 +78,7 @@
             </form>
         </div>
 
-        <!-- Inventory List -->
-        <div class="modern-card hover-lift">
+        <div class="wh-table-pane wh-inventory-panel">
             <h4 class="card-heading mb-3">Current Inventory</h4>
             
             <div class="table-responsive">

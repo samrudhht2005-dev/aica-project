@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AICA — Choose workspace</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     <style>
         /* Override app shell body { display:flex } from style.css — this page has no sidebar */
         html, body {
@@ -19,115 +23,13 @@
         body {
             display: block !important;
         }
-        .iface-wrap {
-            min-height: 100vh;
-            width: 100%;
-            box-sizing: border-box;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: clamp(24px, 5vh, 48px) clamp(16px, 4vw, 40px);
-            background:
-                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
-                radial-gradient(ellipse 70% 50% at 50% 100%, rgba(30, 58, 95, 0.2), transparent 50%),
-                var(--bg, #0b1628);
-        }
-        .iface-panel {
-            max-width: 1100px;
-            width: 100%;
-            margin: 0 auto;
-            text-align: center;
-        }
-        .iface-brand {
-            font-size: clamp(2rem, 4vw, 2.5rem);
-            font-weight: 800;
-            letter-spacing: -0.04em;
-            margin: 0 0 0.4rem;
-            color: var(--text, #f8fafc);
-        }
-        .iface-lead {
-            color: var(--text-muted, #94a3b8);
-            margin: 0 auto 2.25rem;
-            font-size: 1.05rem;
-            max-width: 32rem;
-        }
-        .iface-grid {
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 1.25rem;
-            width: 100%;
-            text-align: left;
-        }
-        @media (max-width: 900px) {
-            .iface-grid { grid-template-columns: 1fr; }
-        }
-        .iface-grid form { margin: 0; display: block; height: 100%; }
-        .iface-card {
-            border: 1px solid rgba(148, 163, 184, 0.18);
-            border-radius: 18px;
-            padding: 1.75rem 1.5rem;
-            background: var(--card-bg, rgba(15, 23, 42, 0.72));
-            height: 100%;
-            min-height: 190px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-            text-align: left;
-            width: 100%;
-            cursor: pointer;
-            color: inherit;
-        }
-        .iface-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
-            border-color: rgba(147, 197, 253, 0.45);
-        }
-        .iface-card:focus-visible {
-            outline: 2px solid #93c5fd;
-            outline-offset: 3px;
-        }
-        .iface-card h3 {
-            font-weight: 700;
-            font-size: 1.2rem;
-            margin: 14px 0 8px;
-            color: var(--text, #f8fafc);
-        }
-        .iface-card p {
-            color: var(--text-muted, #94a3b8);
-            margin: 0;
-            font-size: 0.92rem;
-            line-height: 1.5;
-        }
-        .iface-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.35rem;
-            color: #ecfdf5;
-            background: rgba(16, 185, 129, 0.22);
-        }
-        .iface-card.org .iface-icon {
-            background: rgba(59, 130, 246, 0.22);
-            color: #dbeafe;
-        }
-        .iface-card.weigh .iface-icon {
-            background: rgba(251, 191, 36, 0.22);
-            color: #fef3c7;
-        }
-        .iface-meta {
-            font-size: 0.85rem;
-            color: var(--text-muted, #94a3b8);
-            margin: 1.75rem 0 0;
-            text-align: center;
-        }
-        .iface-meta a { color: #93c5fd; text-decoration: none; font-weight: 600; }
-        .iface-meta a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
+{% include "partials/theme_toggle.html" %}
 <div class="iface-wrap">
     <div class="iface-panel">
+        <img class="aica-logo aica-logo-lg aica-logo-adaptive iface-logo" src="/static/aica-logo.png" width="64" height="64" alt="AICA">
         <div class="iface-brand">AICA</div>
         <p class="iface-lead" data-i18n="iface.choose">Choose your workspace</p>
         <div class="iface-grid">

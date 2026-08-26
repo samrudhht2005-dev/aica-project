@@ -2,22 +2,23 @@
 <html lang="en">
 
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>AICA - Reports Center</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Outfit + Cormorant Garamond -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Bootstrap and Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     
     <style>
         .report-card {
@@ -40,50 +41,55 @@
 
 <div class="main-content">
 
-    <div class="hero-card">
+    <header class="page-mast">
         <div>
-            <h1 class="hero-title" data-i18n="pages.reportsTitle">Financial Report Generation Center</h1>
-            <p class="hero-subtitle">Exports use the same live totals as the dashboard</p>
+            <h1 class="page-mast-title" data-i18n="pages.reportsTitle">Financial Report Generation Center</h1>
+            <p class="page-mast-sub">Exports use the same live totals as the dashboard</p>
         </div>
-    </div>
+    </header>
 
     {{ page_intro("What you are exporting", "These files are a snapshot of turnover, business costs, payroll, assets and tax notes right now. They are working papers — not a signed Form 3CD. Backup & clear sales wipes POS bills after download, which will drop turnover on every other page.") }}
 
-    <div class="row g-3 mb-4">
-        <div class="col-md-3"><div class="p-3 border rounded-4 small text-muted">Sales<br><strong class="fs-5 text-dark">₹{{ "{:,.2f}".format(sales_total) }}</strong></div></div>
-        <div class="col-md-3"><div class="p-3 border rounded-4 small text-muted">Operating costs<br><strong class="fs-5 text-dark">₹{{ "{:,.2f}".format(expenses_total) }}</strong></div></div>
-        <div class="col-md-3"><div class="p-3 border rounded-4 small text-muted">Profit<br><strong class="fs-5 text-dark">₹{{ "{:,.2f}".format(profit_total) }}</strong></div></div>
-        <div class="col-md-3"><div class="p-3 border rounded-4 small text-muted">Eligible ITC / est. tax<br><strong class="fs-5 text-dark">₹{{ "{:,.2f}".format(eligible_itc) }} / ₹{{ "{:,.2f}".format(total_tax_old) }}</strong></div></div>
+    <div class="metric-strip">
+        <div class="metric-cell">
+            <span class="metric-cell-label">Sales</span>
+            <p class="metric-cell-value">₹{{ "{:,.2f}".format(sales_total) }}</p>
+        </div>
+        <div class="metric-cell">
+            <span class="metric-cell-label">Operating costs</span>
+            <p class="metric-cell-value">₹{{ "{:,.2f}".format(expenses_total) }}</p>
+        </div>
+        <div class="metric-cell">
+            <span class="metric-cell-label">Profit</span>
+            <p class="metric-cell-value {% if profit_total >= 0 %}money-gain{% else %}money-owe{% endif %}">₹{{ "{:,.2f}".format(profit_total) }}</p>
+        </div>
+        <div class="metric-cell">
+            <span class="metric-cell-label">Eligible ITC / est. tax</span>
+            <p class="metric-cell-value"><span class="money-gain">₹{{ "{:,.2f}".format(eligible_itc) }}</span> <span class="text-muted">/</span> <span class="money-owe">₹{{ "{:,.2f}".format(total_tax_old) }}</span></p>
+        </div>
     </div>
 
-    <div class="row g-4">
+    <div class="split-plane split-plane-equal">
         <!-- Report 1: Audit Statement -->
-        <div class="col-md-6">
-            <div class="report-card">
-                <h5 class="font-weight-bold text-dark"><i class="bi bi-file-earmark-spreadsheet-fill text-success"></i> Corporate Financial Audit CSV</h5>
+        <section class="data-plane report-card">
+                <h5 class="font-weight-bold"><i class="bi bi-file-earmark-spreadsheet-fill text-success"></i> Corporate Financial Audit CSV</h5>
                 <p class="small text-muted mt-2">Export comprehensive P&L figures, capitalized fixed asset values, cumulative payroll expenditures, and active tax suggestions in raw CSV format.</p>
                 <a href="/reports/generate?format_type=csv" class="btn btn-primary btn-sm mt-3" style="border-radius: 10px;"><i class="bi bi-download"></i> Export CSV Report</a>
-            </div>
-        </div>
+        </section>
 
         <!-- Report 2: JSON Statement -->
-        <div class="col-md-6">
-            <div class="report-card">
-                <h5 class="font-weight-bold text-dark"><i class="bi bi-filetype-json text-primary"></i> Auditable Financial Summary (JSON)</h5>
+        <section class="data-plane report-card">
+                <h5 class="font-weight-bold"><i class="bi bi-filetype-json text-primary"></i> Auditable Financial Summary (JSON)</h5>
                 <p class="small text-muted mt-2">Generate clean, structured JSON ledger data representing turnover, active recommendations, and audited GST anomalies for external software ingestion.</p>
                 <a href="/reports/generate?format_type=json" target="_blank" class="btn btn-outline-primary btn-sm mt-3" style="border-radius: 10px;"><i class="bi bi-eye"></i> View JSON Schema</a>
-            </div>
-        </div>
+        </section>
+    </div>
 
-        <!-- Report 3: POS Backup -->
-        <div class="col-md-6">
-            <div class="report-card">
-                <h5 class="font-weight-bold text-dark"><i class="bi bi-file-earmark-excel-fill text-warning"></i> POS Sales Ledger Backup & Clear</h5>
+    <section class="data-plane report-card">
+                <h5 class="font-weight-bold"><i class="bi bi-file-earmark-excel-fill text-warning"></i> POS Sales Ledger Backup & Clear</h5>
                 <p class="small text-muted mt-2">Download a CSV backup of the product sales ledger and clear active transactions from the database for the new accounting period.</p>
                 <a href="/export_and_clear" class="btn btn-warning btn-sm mt-3 text-dark" style="border-radius: 10px; font-weight: 500;"><i class="bi bi-database-fill-exclamation"></i> Backup & Clear Sales</a>
-            </div>
-        </div>
-    </div>
+    </section>
 
 </div>
 

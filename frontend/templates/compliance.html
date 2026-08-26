@@ -2,22 +2,23 @@
 <html lang="en">
 
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>AICA - Compliance Deadlines Calendar</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Outfit + Cormorant Garamond -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Bootstrap and Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     
     <style>
         .compliance-row.completed {
@@ -33,17 +34,17 @@
 
 <div class="main-content">
 
-    <div class="hero-card">
+    <header class="page-mast">
         <div>
-            <h1 class="hero-title" data-i18n="pages.complianceTitle">Statutory Compliance Calendar</h1>
-            <p class="hero-subtitle">Mark a return filed when you have actually submitted it on the GST / income-tax portal</p>
+            <h1 class="page-mast-title" data-i18n="pages.complianceTitle">Statutory Compliance Calendar</h1>
+            <p class="page-mast-sub">Mark a return filed when you have actually submitted it on the GST / income-tax portal</p>
         </div>
-    </div>
+    </header>
 
     {{ page_intro("What these deadlines are", "GSTR-1 is your sales return. GSTR-3B is the tax payment return. TDS and advance tax have their own dates. Late filing costs a fee even if tax is zero. Tick Filed only after the portal acknowledgement — this calendar is your reminder, not the filing itself.") }}
 
     <!-- Calendar Table -->
-    <div class="modern-card">
+    <div class="data-plane">
         <h4 class="card-heading"><i class="bi bi-calendar3 text-primary"></i> Filing deadlines & check ledger</h4>
         <div class="table-responsive">
             <table class="table align-middle">

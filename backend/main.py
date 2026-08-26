@@ -24,6 +24,19 @@ if _static.is_dir():
 app.include_router(router)
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    """Serve the AICA mark at the browser's default favicon path."""
+    from fastapi.responses import FileResponse
+    icon = _static / "favicon.ico"
+    if icon.is_file():
+        return FileResponse(str(icon), media_type="image/x-icon")
+    png = _static / "aica-icon.png"
+    if png.is_file():
+        return FileResponse(str(png), media_type="image/png")
+    return JSONResponse({"error": "favicon missing"}, status_code=404)
+
+
 @app.get("/health")
 def health():
     """Desktop launcher readiness probe — public, no auth."""

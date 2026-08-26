@@ -1,4 +1,5 @@
-{# Shared floating chrome: theme, language, IRA assistant #}
+{% include "partials/favicon.html" %}
+{# Floating chrome: update banner + IRA only (theme/lang/profile live in topbar) #}
 <link rel="stylesheet" href="/static/update.css?v=3">
 
 <div id="aicaUpdateBanner" class="aica-update-banner" hidden role="dialog" aria-labelledby="aicaUpdateBannerTitle">
@@ -21,18 +22,6 @@
         <button type="button" class="btn btn-primary btn-sm" id="aicaUpdateRestartBtn" hidden data-i18n="update.restart">Restart to update</button>
     </div>
     <div id="aicaUpdateInstallMsg" class="aica-update-install-msg" hidden></div>
-</div>
-
-<button type="button" class="aica-theme-toggle" id="aicaThemeToggle" data-i18n-title="assistant.theme" data-i18n-aria="assistant.theme" title="Toggle theme" aria-label="Toggle theme">
-    <i class="bi bi-moon-fill" id="aicaThemeIcon"></i>
-</button>
-
-<div class="aica-lang-switch" id="aicaLangSwitch" data-i18n-title="assistant.language" title="Language">
-    <select id="aicaLangSelect" aria-label="Language" class="aica-lang-select" data-i18n-aria="assistant.language">
-        <option value="en" {% if preferred_language == 'en' %}selected{% endif %}>English</option>
-        <option value="kn" {% if preferred_language == 'kn' %}selected{% endif %}>ಕನ್ನಡ</option>
-        <option value="hi" {% if preferred_language == 'hi' %}selected{% endif %}>हिन्दी</option>
-    </select>
 </div>
 
 {# IRA ambient layer — inactive until wake / voice #}
@@ -87,3 +76,4 @@ window.AICA_LANG = {{ (preferred_language or 'en') | tojson }};
 <script src="/static/assistant.js?v=13"></script>
 <script src="/static/update.js?v=3"></script>
 <script src="/static/sidebar.js?v=3"></script>
+<script src="/static/theme.js?v=5"></script>

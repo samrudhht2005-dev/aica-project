@@ -99,10 +99,18 @@ class WeighUiLabelTests(unittest.TestCase):
         self.assertIn(b"Rice", res.content)
         # Top-level Weigh workspace chrome (not Organization sidebar)
         self.assertIn(b'data-sidebar-mode="weigh"', res.content)
-        self.assertIn(b"AICA Weigh", res.content)
-        self.assertIn(b"Switch to POS", res.content)
-        self.assertIn(b"Switch to Organization", res.content)
+        # Brand + active Weigh workspace in the top command bar
+        self.assertIn(b'class="aica-brand-word"', res.content)
+        self.assertIn(b">AICA<", res.content)
+        self.assertIn(b'aria-current="page"', res.content)
+        self.assertIn(b'data-i18n="nav.weigh"', res.content)
+        # Workspace switcher still posts to other workspaces
+        self.assertIn(b'name="target" value="pos"', res.content)
+        self.assertIn(b'name="target" value="org"', res.content)
+        self.assertIn(b'action="/switch-interface"', res.content)
         self.assertEqual(res.cookies.get("aica_ui_mode"), "weigh")
+        # Dark-only: no user-facing theme toggle in the weigh chrome
+        self.assertNotIn(b'id="aicaThemeToggle"', res.content)
 
     def test_org_sidebar_does_not_nest_weigh_nav(self):
         """Weigh must not appear as an Organization subsection nav item."""

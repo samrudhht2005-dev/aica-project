@@ -2,22 +2,23 @@
 <html lang="en">
 
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>AICA - Financial Intelligence Dashboard</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Outfit + Cormorant Garamond -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Bootstrap and Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     
     <style>
         .metric-card {
@@ -64,24 +65,22 @@
 
 <div class="main-content">
 
-    <div class="hero-card">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
-            <div>
-                <h1 class="hero-title">Financial Intelligence Hub</h1>
-                <p class="hero-subtitle">
-                    Company: <strong>{{ org.name if org else "Unregistered Company" }}</strong> | State: {{ org.state if org else "KA" }} | PAN: {{ org.pan if org else "N/A" }}
-                </p>
-            </div>
-            <div class="d-flex align-items-center gap-2">
-                <span class="live-chip">Live books</span>
-                <a href="/organization" class="btn btn-light btn-sm" style="border-radius: 10px; font-weight: 600;"><i class="bi bi-gear-fill"></i> Profile settings</a>
-            </div>
+    <header class="page-mast">
+        <div>
+            <h1 class="page-mast-title">Financial Intelligence Hub</h1>
+            <p class="page-mast-sub">
+                Company: <strong>{{ org.name if org else "Unregistered Company" }}</strong> | State: {{ org.state if org else "KA" }} | PAN: {{ org.pan if org else "N/A" }}
+            </p>
         </div>
-    </div>
+        <div class="page-mast-actions">
+            <span class="live-chip">Live books</span>
+            <a href="/organization" class="btn modern-btn btn-sm"><i class="bi bi-gear-fill"></i> Profile settings</a>
+        </div>
+    </header>
 
     {{ page_intro("What this dashboard is", "This is your live P&amp;L snapshot — the same picture a CA would open first. Sales come from POS bills, costs from business expenses plus this month’s payroll, and personal spends are kept out so they do not reduce taxable profit. Press any ? to see what a number means.") }}
     {% if sales_total == 0 and expenses_total == 0 %}
-    <div class="page-intro mb-4" style="border-left-color: #10b981;">
+    <div class="page-intro mb-4" style="border-left-color: var(--success);">
         <div class="page-intro-icon"><i class="bi bi-inbox"></i></div>
         <div>
             <strong>No financial data available yet</strong>
@@ -90,43 +89,27 @@
     </div>
     {% endif %}
 
-    <div class="row g-4 mb-4">
-        <div class="col-md-4 col-sm-6">
-            <div class="metric-card d-flex align-items-center gap-3">
-                <div class="metric-icon bg-success-light"><i class="bi bi-cash-stack"></i></div>
-                <div>
-                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised this FY (POS / sales). Absolute INR — not lakhs. Starting point for GST output tax and income-tax profit.") }}</span>
-                    <h3 class="m-0 font-weight-bold money-neutral">{{ sales_total | inr }}</h3>
-                </div>
-            </div>
+    <div class="metric-strip metric-strip-3">
+        <div class="metric-cell">
+            <span class="metric-cell-label">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised this FY (POS / sales). Absolute INR — not lakhs. Starting point for GST output tax and income-tax profit.") }}</span>
+            <p class="metric-cell-value money-neutral">{{ sales_total | inr }}</p>
         </div>
-        <div class="col-md-4 col-sm-6">
-            <div class="metric-card d-flex align-items-center gap-3">
-                <div class="metric-icon bg-danger-light"><i class="bi bi-graph-down"></i></div>
-                <div>
-                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Operating costs {{ ca_tip("Operating costs", "FY business expenses plus annualised payroll (12 × current monthly payroll). Personal / owner drawings are excluded. Absolute INR.") }}</span>
-                    <h3 class="m-0 font-weight-bold money-neutral">{{ expenses_total | inr }}</h3>
-                    <div class="text-muted" style="font-size: 0.75rem;">Bills {{ business_expense_total | inr }} · Monthly payroll {{ monthly_payroll | inr }}</div>
-                </div>
-            </div>
+        <div class="metric-cell">
+            <span class="metric-cell-label">Operating costs {{ ca_tip("Operating costs", "FY business expenses plus annualised payroll (12 × current monthly payroll). Personal / owner drawings are excluded. Absolute INR.") }}</span>
+            <p class="metric-cell-value money-neutral">{{ expenses_total | inr }}</p>
+            <div class="metric-cell-hint">Bills {{ business_expense_total | inr }} · Monthly payroll {{ monthly_payroll | inr }}</div>
         </div>
-        <div class="col-md-4 col-sm-6">
-            <div class="metric-card d-flex align-items-center gap-3">
-                <div class="metric-icon bg-primary-light"><i class="bi bi-wallet2"></i></div>
-                <div>
-                    <span class="text-muted small" style="text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px;">Net operating profit {{ ca_tip("Profit", "Sales minus operating costs. Income tax is computed on this figure after depreciation and 80JJAA.") }}</span>
-                    <h3 class="m-0 font-weight-bold {% if profit_total >= 0 %}money-gain{% else %}money-owe{% endif %}">{{ profit_total | inr }}</h3>
-                    {% if personal_expense_total %}
-                    <div class="text-muted" style="font-size: 0.75rem;">Personal (not in P&amp;L): {{ personal_expense_total | inr }}</div>
-                    {% endif %}
-                </div>
-            </div>
+        <div class="metric-cell">
+            <span class="metric-cell-label">Net operating profit {{ ca_tip("Profit", "Sales minus operating costs. Income tax is computed on this figure after depreciation and 80JJAA.") }}</span>
+            <p class="metric-cell-value {% if profit_total >= 0 %}money-gain{% else %}money-owe{% endif %}">{{ profit_total | inr }}</p>
+            {% if personal_expense_total %}
+            <div class="metric-cell-hint">Personal (not in P&amp;L): {{ personal_expense_total | inr }}</div>
+            {% endif %}
         </div>
     </div>
 
-    <div class="row g-4 mb-4">
-        <div class="col-md-6">
-            <div class="modern-card h-100">
+    <div class="split-plane split-plane-equal">
+        <section class="data-plane h-100">
                 <h4 class="card-heading"><i class="bi bi-percent text-primary"></i> GST Summary {{ ca_tip("GST in plain words", "Output tax is GST you collected on sales (amount owed before ITC). Eligible ITC is GST you paid on business purchases you may set off. Net payable is output minus eligible ITC.") }}</h4>
                 <div class="row text-center mt-3">
                     <div class="col-4 border-end">
@@ -146,11 +129,9 @@
                 <div class="text-center mt-3">
                     <a href="/gst" class="btn btn-outline-primary btn-sm w-100" style="border-radius: 10px;">Open GST working &gt;</a>
                 </div>
-            </div>
-        </div>
+        </section>
         
-        <div class="col-md-6">
-            <div class="modern-card h-100">
+        <section class="data-plane h-100">
                 <h4 class="card-heading"><i class="bi bi-calendar-check text-warning"></i> Compliance Status {{ ca_tip("Filings", "These are statutory due dates (GSTR-1, GSTR-3B, TDS, advance tax). Missing them attracts late fees and interest even if tax is nil.") }}</h4>
                 <div class="row text-center mt-3">
                     <div class="col-6 border-end">
@@ -165,14 +146,12 @@
                 <div class="text-center mt-4">
                     <a href="/compliance" class="btn btn-outline-warning btn-sm w-100" style="border-radius: 10px; color: #d97706; border-color: #f59e0b;">Filing calendar &gt;</a>
                 </div>
-            </div>
-        </div>
+        </section>
     </div>
 
-    <div class="row g-4 mb-4">
-        <div class="col-md-7">
-            <div class="modern-card h-100">
-                <div class="d-flex justify-content-between align-items-center mb-3">
+    <div class="split-plane">
+        <section class="data-plane h-100">
+                <div class="data-plane-head">
                     <h4 class="card-heading m-0"><i class="bi bi-lightning-charge-fill text-warning"></i> Tax planning from your books</h4>
                     <span class="badge bg-warning text-dark">{{ opportunities_count }} live</span>
                 </div>
@@ -207,11 +186,9 @@
                 <div class="text-end">
                     <a href="/tax-optimization" class="btn btn-link btn-sm font-weight-bold" style="text-decoration: none;">Full explanations &gt;</a>
                 </div>
-            </div>
-        </div>
+        </section>
 
-        <div class="col-md-5">
-            <div class="modern-card h-100">
+        <section class="data-plane h-100">
                 <h4 class="card-heading"><i class="bi bi-receipt text-primary"></i> Latest expenses</h4>
                 {% for exp in recent_expenses %}
                     <div class="d-flex justify-content-between border-bottom py-2">
@@ -225,13 +202,10 @@
                     <p class="text-muted small mb-0">No expenses yet. Record one on the Expenses page — this list and GST/profit will move immediately.</p>
                 {% endfor %}
                 <a href="/expenses" class="btn btn-link btn-sm px-0 mt-2">Record / review expenses &gt;</a>
-            </div>
-        </div>
+        </section>
     </div>
 
-    <div class="row g-4 mb-4">
-        <div class="col-12">
-            <div class="modern-card">
+    <section class="data-plane">
                 <h4 class="card-heading"><i class="bi bi-exclamation-triangle-fill text-danger"></i> Audit flags ({{ anomalies_count }})</h4>
                 {% for anomaly in recent_anomalies %}
                     <div class="anomaly-alert">
@@ -248,9 +222,7 @@
                         <p class="mt-2 mb-0">No anomalies in the current registers.</p>
                     </div>
                 {% endfor %}
-            </div>
-        </div>
-    </div>
+    </section>
 
 </div>
 

@@ -2,16 +2,17 @@
 <html lang="en">
 
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AICA - AI Optimization</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
 </head>
 
 <body>
@@ -20,19 +21,19 @@
 
 <div class="main-content">
 
-    <div class="hero-card">
+    <header class="page-mast">
         <div>
-            <h1 class="hero-title" data-i18n="pages.optimizationTitle">AI Legal Tax Optimization</h1>
-            <p class="hero-subtitle">Opportunities AICA found in your books — with clear next steps you can take</p>
+            <h1 class="page-mast-title" data-i18n="pages.optimizationTitle">AI Legal Tax Optimization</h1>
+            <p class="page-mast-sub">Opportunities AICA found in your books — with clear next steps you can take</p>
         </div>
-    </div>
+    </header>
 
     {{ page_intro(
         "How to use these cards",
         "First understand your current tax position (what you may owe). Then review opportunities that may legally reduce that liability or unlock credits. All amounts are absolute INR — ₹1,607.80 means one thousand six hundred seven rupees and eighty paise, never lakhs. Verify with a qualified tax professional before claiming."
     ) }}
 
-    <div class="opt-position modern-card mb-4">
+    <div class="opt-position data-plane mb-4">
         <h2 class="opt-position-title">Current tax position</h2>
         <p class="opt-position-sub text-muted small mb-3">From your AICA books this financial year (absolute INR). Estimates — not a filed return.</p>
         <div class="opt-position-grid">
@@ -174,7 +175,7 @@
                     <p class="opt-disclaimer"><i class="bi bi-info-circle"></i> {{ card.disclaimer }}</p>
                 </article>
             {% else %}
-                <div class="modern-card text-center py-5 opt-empty">
+                <div class="data-plane text-center py-5 opt-empty">
                     <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
                     <h5 class="mt-3 font-weight-bold">No optimization opportunities identified yet.</h5>
                     <p class="text-muted mx-auto" style="max-width: 36rem;">

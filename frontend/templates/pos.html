@@ -2,22 +2,23 @@
 <html lang="en">
 
 <head>
+{% include "partials/favicon.html" %}
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>AICA POS Billing Scanner</title>
 
-    <!-- Google Fonts: Inter -->
+    <!-- Google Fonts: Outfit + Cormorant Garamond -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     
     <!-- Bootstrap and Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/theme.js?v=3"></script>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <script src="/static/theme.js?v=5"></script>
     
     <style>
     /* Expand content area to handle the detailed sidebar navigation */
@@ -28,26 +29,16 @@
 </head>
 
 <body>
-{% from "macros.html" import page_intro %}
 {% include "partials/sidebar_pos.html" %}
 
 <div class="main-content">
 
-    <div class="hero-card pos-hero">
-        <div>
-            <h1 class="hero-title" data-i18n="pos.title">Point of Sale</h1>
-            <p class="hero-subtitle" data-i18n="pos.subtitle">Scan, bill, and track sales intelligence</p>
-        </div>
-        <div class="pos-quick-actions">
-            <button type="button" class="btn modern-btn pos-action-btn" id="posQuickNewSale" data-i18n="pos.newSale">New Sale</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="analytics" data-i18n="pos.analytics">Analytics</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="history" data-i18n="pos.history">Sales History</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary pos-shell-tab" data-pos-tab="invoices" data-i18n="pos.invoices">Invoices</button>
-        </div>
+    <div class="page-head d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <h1 class="page-title m-0" data-i18n="pos.title">Point of Sale</h1>
+        <button type="button" class="btn modern-btn pos-action-btn" id="posQuickNewSale" data-i18n="pos.newSale">New Sale</button>
     </div>
 
-    <div class="pos-shell-tabs mb-3" role="tablist">
+    <div class="pos-shell-tabs" role="tablist">
         <button type="button" class="pos-shell-tab active" data-pos-tab="checkout" data-i18n="pos.checkout">Checkout</button>
         <button type="button" class="pos-shell-tab" data-pos-tab="qr-status">QR Status</button>
         <button type="button" class="pos-shell-tab" data-pos-tab="overview" data-i18n="pos.overview">Sales Overview</button>
@@ -57,8 +48,6 @@
         <button type="button" class="pos-shell-tab" data-pos-tab="products" data-i18n="pos.productPerf">Product Performance</button>
     </div>
 
-    {{ page_intro("What checkout does", "Each completed bill is a GST taxable supply: it increases turnover, output GST, and stock reduction. After checkout, Dashboard, GST and Income Tax all move. Keep the camera on the product so the right HSN/GST rate is applied.") }}    
-    
     <div id="posIntelligenceRoot">
     <div class="pos-tab-panel" data-pos-panel="checkout">
     <style>
@@ -66,146 +55,12 @@
         0% { background-color: rgba(46, 204, 113, 0.35); }
         100% { background-color: transparent; }
     }
-    .flash-row {
-        animation: row-flash 1.2s ease-out;
-    }
-
+    .flash-row { animation: row-flash 1.2s ease-out; }
     @keyframes pulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
-    .animate-pulse {
-        animation: pulse 1.5s infinite;
-    }
-    .cv-status-bar {
-        font-size: 0.85rem;
-        color: #f8fafc;
-        background: linear-gradient(90deg, rgba(15,23,42,0.92), rgba(30,41,59,0.88));
-        border-top: 1px solid rgba(148,163,184,0.25);
-        backdrop-filter: blur(6px);
-        transition: background 0.35s ease, border-color 0.35s ease;
-    }
-    .cv-status-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #94a3b8;
-        flex-shrink: 0;
-        box-shadow: 0 0 0 0 rgba(148,163,184,0.5);
-    }
-    .cv-state-scanning .cv-status-dot {
-        background: #38bdf8;
-        animation: cvPulse 1.4s ease-in-out infinite;
-    }
-    .cv-state-detected .cv-status-dot { background: #22c55e; }
-    .cv-state-uncertain .cv-status-dot { background: #f59e0b; }
-    .cv-state-no_model .cv-status-dot,
-    .cv-state-offline .cv-status-dot { background: #ef4444; }
-    .cv-state-detected {
-        background: linear-gradient(90deg, rgba(6,78,59,0.92), rgba(15,23,42,0.9));
-        border-top-color: rgba(34,197,94,0.45);
-    }
-    .cv-state-uncertain {
-        background: linear-gradient(90deg, rgba(120,53,15,0.9), rgba(15,23,42,0.9));
-        border-top-color: rgba(245,158,11,0.45);
-    }
-    .cv-state-no_model, .cv-state-offline {
-        background: linear-gradient(90deg, rgba(127,29,29,0.9), rgba(15,23,42,0.9));
-        border-top-color: rgba(239,68,68,0.4);
-    }
-    @keyframes cvPulse {
-        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(56,189,248,0.55); }
-        50% { transform: scale(1.15); box-shadow: 0 0 0 6px rgba(56,189,248,0); }
-    }
-    .cv-detect-panel {
-        border: 1px solid var(--border-color, #e2e8f0);
-        border-radius: 12px;
-        padding: 14px 16px;
-        background: var(--card-bg, #fff);
-    }
-    .cv-detect-label {
-        font-size: 0.72rem;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-        font-weight: 700;
-        color: #64748b;
-    }
-    .cv-detect-name {
-        font-size: 1.15rem;
-        font-weight: 700;
-        line-height: 1.25;
-        margin-top: 2px;
-    }
-    .cv-detect-meta { font-size: 0.82rem; margin-top: 2px; }
-    .cv-detect-conf {
-        font-size: 1.35rem;
-        font-weight: 800;
-        color: #0f766e;
-        min-width: 3.2rem;
-        text-align: right;
-    }
-    .pos-hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; }
-    .pos-quick-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .pos-shell-tabs {
-        display: flex; flex-wrap: wrap; gap: 6px;
-        border-bottom: 1px solid var(--border-color, #e2e8f0);
-        padding-bottom: 10px;
-    }
-    .pos-shell-tab {
-        border: 1px solid transparent;
-        background: transparent;
-        color: var(--text-muted, #64748b);
-        font-size: 0.85rem;
-        font-weight: 600;
-        padding: 8px 12px;
-        border-radius: var(--radius-sm, 10px);
-        cursor: pointer;
-    }
-    .pos-shell-tab:hover { background: var(--surface-2, rgba(15, 23, 42, 0.04)); color: var(--text, #0f172a); }
-    .pos-shell-tab.active {
-        background: var(--accent, #0f172a);
-        color: #fff;
-    }
-    :root[data-theme="dark"] .pos-shell-tab.active { color: #0b1628; }
-    .pos-kpi, .pos-mini-kpi {
-        background: var(--surface, var(--card-bg, #fff));
-        border: 1px solid var(--border, var(--border-color, #e2e8f0));
-        border-radius: var(--radius, 12px);
-        padding: 14px 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        height: 100%;
-        min-width: 0;
-        overflow: visible;
-        color: var(--text, #0f172a);
-    }
-    .pos-kpi span, .pos-mini-kpi span {
-        font-size: 0.75rem;
-        color: var(--text-muted, #64748b);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        font-weight: 600;
-        line-height: 1.35;
-    }
-    .pos-kpi strong, .pos-mini-kpi strong {
-        font-size: 1.2rem;
-        color: var(--text, #0f172a);
-        font-weight: 700;
-        line-height: 1.3;
-        overflow-wrap: anywhere;
-        word-break: break-word;
-    }
-    .pos-action-btn.modern-btn {
-        height: 38px;
-        padding: 0 16px;
-        font-size: 0.85rem;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: auto;
-        margin: 0;
-    }
+    .animate-pulse { animation: pulse 1.5s infinite; }
     .pos-tab-panel .form-control-sm,
     .pos-tab-panel .form-select-sm {
         height: 38px !important;
@@ -274,12 +129,34 @@
     .pos-modal[hidden] { display: none !important; }
     .pos-modal-backdrop { position: absolute; inset: 0; background: rgba(15,23,42,0.45); }
     .pos-modal-dialog { position: relative; z-index: 1; width: min(720px, 100%); max-height: 90vh; overflow: auto; }
+    .pos-stage-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+    }
+    .pos-stage-viewport {
+        position: relative;
+        overflow: hidden;
+        border-radius: var(--radius, 14px);
+        border: 1px solid var(--border, #374151);
+        background: #111827;
+    }
+    .pos-stage-tools { display: flex; flex-direction: column; gap: 12px; }
+    .pos-cart-dock-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+    .pos-cart-dock-body { min-height: 0; }
+    .pos-cart-dock-foot { margin-top: 4px; }
     </style>
 
-    <div class="dashboard-grid fade-in-up d-flex flex-column flex-lg-row gap-4">
-        <!-- Left Column: Vision Scanner & Voice controls -->
-        <div class="modern-card hover-lift flex-fill" style="flex: 1.2; min-width: 320px;">
-            <div class="d-flex justify-content-between align-items-lg-center align-items-start flex-column flex-sm-row gap-2 mb-3">
+    <div class="pos-workstation fade-in-up">
+        <section class="pos-stage">
+            <div class="pos-stage-toolbar">
                 <h4 class="card-heading m-0" data-i18n="pos.scanner">Live Product Scanner</h4>
                 <div class="d-flex gap-2 align-items-center flex-wrap">
                     <div class="form-check form-switch m-0 d-flex align-items-center gap-2">
@@ -300,9 +177,8 @@
                     <span id="cameraModeBadge" class="badge bg-secondary">Idle</span>
                 </div>
             </div>
-            
-            <!-- Webcam stream display window -->
-            <div class="position-relative overflow-hidden rounded mb-3 border" style="background: #111827; border-color: #374151 !important;">
+
+            <div class="pos-stage-viewport">
                 <img id="cameraFeed" src="/camera/video_feed" class="img-fluid rounded w-100" style="object-fit: contain; min-height: 340px;" alt="AI POS Camera" />
                 <div id="cvStatusBar" class="cv-status-bar cv-state-scanning position-absolute bottom-0 start-0 w-100 px-3 py-2 d-flex justify-content-between align-items-center gap-2">
                     <div class="d-flex align-items-center gap-2 min-w-0">
@@ -313,171 +189,169 @@
                 </div>
             </div>
 
-            <!-- Detection candidate panel (SQL-backed confirm, no auto-bill by default) -->
-            <div id="cvDetectPanel" class="cv-detect-panel mb-3">
-                <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div class="min-w-0">
-                        <div class="cv-detect-label">Detection</div>
-                        <div id="cvDetectName" class="cv-detect-name">—</div>
-                        <div id="cvDetectMeta" class="cv-detect-meta text-muted">Waiting for a trained product…</div>
+            <div class="pos-stage-tools">
+                <div id="cvDetectPanel" class="cv-detect-panel">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div class="min-w-0">
+                            <div class="cv-detect-label">Detection</div>
+                            <div id="cvDetectName" class="cv-detect-name">—</div>
+                            <div id="cvDetectMeta" class="cv-detect-meta text-muted">Waiting for a trained product…</div>
+                        </div>
+                        <div id="cvDetectConf" class="cv-detect-conf">—</div>
                     </div>
-                    <div id="cvDetectConf" class="cv-detect-conf">—</div>
-                </div>
-                <div class="d-flex flex-wrap gap-2 mt-3">
-                    <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="cvAddBtn" onclick="confirmDetectedProduct()" disabled>
-                        <i class="bi bi-cart-plus"></i> Add to Cart
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="cvClearBtn" onclick="clearDetectionCandidate()" disabled>
-                        Clear
-                    </button>
-                </div>
-                <div class="form-check form-switch mt-2 mb-0">
-                    <input class="form-check-input" type="checkbox" id="cvAutoAdd" onchange="toggleAutoAdd(this.checked)">
-                    <label class="form-check-label" for="cvAutoAdd" style="font-size: 0.82rem;">Auto-add accepted detections (optional)</label>
-                </div>
-            </div>
-
-            <!-- Voice Control & Scanner Buttons -->
-            <div class="d-flex gap-2 mb-3">
-                <button type="button" class="btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2" id="voiceBtn" onclick="toggleVoiceCommand()">
-                    <i class="bi bi-mic"></i> Voice Command
-                </button>
-                <button type="button" class="btn btn-outline-secondary py-2" id="toggleCameraBtn" onclick="toggleCameraStream()" title="Pause/Resume Camera">
-                    <i class="bi bi-camera-video-off"></i> Pause Camera
-                </button>
-            </div>
-            
-            <div id="voiceQueryDisplay" class="text-muted italic mb-3" style="font-size: 0.88rem; min-height: 22px;"></div>
-
-            <!-- Text Command Fallback Input -->
-            <div class="input-group mb-3">
-                <input type="text" id="textCommandInput" class="form-control modern-input m-0" placeholder="Or type voice command here... (e.g. 'add 2 Dairy Milk')" style="border-top-right-radius: 0; border-bottom-right-radius: 0; height: 42px; font-size: 0.88rem;">
-                <button class="btn btn-dark" type="button" id="sendTextCommandBtn" onclick="submitTextCommand()" style="border-top-right-radius: 14px; border-bottom-right-radius: 14px; height: 42px; font-size: 0.88rem;">
-                    <i class="bi bi-send-fill"></i>
-                </button>
-            </div>
-
-            <!-- Manual AICA weigh-ticket token (before webcam QR scanning) -->
-            <div class="accordion mb-3" id="weighTicketAccordion">
-                <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2 class="accordion-header" id="headingWeighTicket">
-                        <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeighTicket" aria-expanded="false" aria-controls="collapseWeighTicket" style="font-size: 0.88rem; font-weight: 500;">
-                            <i class="bi bi-qr-code me-2"></i> Enter / Paste AICA QR Token
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <button type="button" class="btn btn-primary btn-sm flex-grow-1" id="cvAddBtn" onclick="confirmDetectedProduct()" disabled>
+                            <i class="bi bi-cart-plus"></i> Add to Cart
                         </button>
-                    </h2>
-                    <div id="collapseWeighTicket" class="accordion-collapse collapse" aria-labelledby="headingWeighTicket" data-bs-parent="#weighTicketAccordion">
-                        <div class="accordion-body p-3">
-                            <p class="small text-muted mb-2">Paste the opaque ticket token from a weigh label (starts with <code>AICA1.</code>). Stock is not deducted until checkout.</p>
-                            <div class="input-group mb-2">
-                                <input type="text" id="weighTicketTokenInput" class="form-control modern-input m-0" placeholder="AICA1.…" autocomplete="off" spellcheck="false" style="height: 42px; font-size: 0.85rem;">
-                                <button class="btn btn-dark" type="button" id="resolveWeighTicketBtn" onclick="resolveWeighTicketToCart()" style="height: 42px; font-size: 0.85rem;">
-                                    Resolve &amp; Add
-                                </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cvClearBtn" onclick="clearDetectionCandidate()" disabled>
+                            Clear
+                        </button>
+                    </div>
+                    <div class="form-check form-switch mt-2 mb-0">
+                        <input class="form-check-input" type="checkbox" id="cvAutoAdd" onchange="toggleAutoAdd(this.checked)">
+                        <label class="form-check-label" for="cvAutoAdd" style="font-size: 0.82rem;">Auto-add accepted detections (optional)</label>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary flex-grow-1 py-2 font-weight-bold d-flex align-items-center justify-content-center gap-2" id="voiceBtn" onclick="toggleVoiceCommand()">
+                        <i class="bi bi-mic"></i> Voice Command
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary py-2" id="toggleCameraBtn" onclick="toggleCameraStream()" title="Pause/Resume Camera">
+                        <i class="bi bi-camera-video-off"></i> Pause Camera
+                    </button>
+                </div>
+
+                <div id="voiceQueryDisplay" class="text-muted italic" style="font-size: 0.88rem; min-height: 22px;"></div>
+
+                <div class="input-group">
+                    <input type="text" id="textCommandInput" class="form-control modern-input m-0" placeholder="Or type voice command here... (e.g. 'add 2 Dairy Milk')" style="border-top-right-radius: 0; border-bottom-right-radius: 0; height: 42px; font-size: 0.88rem;">
+                    <button class="btn btn-dark" type="button" id="sendTextCommandBtn" onclick="submitTextCommand()" style="border-top-right-radius: 14px; border-bottom-right-radius: 14px; height: 42px; font-size: 0.88rem;">
+                        <i class="bi bi-send-fill"></i>
+                    </button>
+                </div>
+
+                <div class="accordion" id="weighTicketAccordion">
+                    <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <h2 class="accordion-header" id="headingWeighTicket">
+                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeighTicket" aria-expanded="false" aria-controls="collapseWeighTicket" style="font-size: 0.88rem; font-weight: 500;">
+                                <i class="bi bi-qr-code me-2"></i> Enter / Paste AICA QR Token
+                            </button>
+                        </h2>
+                        <div id="collapseWeighTicket" class="accordion-collapse collapse" aria-labelledby="headingWeighTicket" data-bs-parent="#weighTicketAccordion">
+                            <div class="accordion-body p-3">
+                                <p class="small text-muted mb-2">Paste the opaque ticket token from a weigh label (starts with <code>AICA1.</code>). Stock is not deducted until checkout.</p>
+                                <div class="input-group mb-2">
+                                    <input type="text" id="weighTicketTokenInput" class="form-control modern-input m-0" placeholder="AICA1.…" autocomplete="off" spellcheck="false" style="height: 42px; font-size: 0.85rem;">
+                                    <button class="btn btn-dark" type="button" id="resolveWeighTicketBtn" onclick="resolveWeighTicketToCart()" style="height: 42px; font-size: 0.85rem;">
+                                        Resolve &amp; Add
+                                    </button>
+                                </div>
+                                <div id="weighTicketMsg" class="small d-none" role="status"></div>
                             </div>
-                            <div id="weighTicketMsg" class="small d-none" role="status"></div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Manual lookup backup barcode -->
-            <div class="accordion" id="manualSearchAccordion">
-                <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
-                    <h2 class="accordion-header" id="headingManual">
-                        <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManual" aria-expanded="false" aria-controls="collapseManual" style="font-size: 0.88rem; font-weight: 500;">
-                            <i class="bi bi-search me-2"></i> Manual Barcode Search Backup
-                        </button>
-                    </h2>
-                    <div id="collapseManual" class="accordion-collapse collapse" aria-labelledby="headingManual" data-bs-parent="#manualSearchAccordion">
-                        <div class="accordion-body p-3">
-                            <form id="addToCartForm">
-                                <input
-                                    type="text"
-                                    id="posProduct"
-                                    list="productList"
-                                    class="form-control modern-input mb-3"
-                                    placeholder="Enter Product Name (Start typing...)"
-                                    autocomplete="off"
-                                    required
-                                >
-                                <datalist id="productList">
-                                </datalist>
+                <div class="accordion" id="manualSearchAccordion">
+                    <div class="accordion-item" style="border: 1px solid #e2e8f0; border-radius: 8px;">
+                        <h2 class="accordion-header" id="headingManual">
+                            <button class="accordion-button collapsed p-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapseManual" aria-expanded="false" aria-controls="collapseManual" style="font-size: 0.88rem; font-weight: 500;">
+                                <i class="bi bi-search me-2"></i> Manual Barcode Search Backup
+                            </button>
+                        </h2>
+                        <div id="collapseManual" class="accordion-collapse collapse" aria-labelledby="headingManual" data-bs-parent="#manualSearchAccordion">
+                            <div class="accordion-body p-3">
+                                <form id="addToCartForm">
+                                    <input
+                                        type="text"
+                                        id="posProduct"
+                                        list="productList"
+                                        class="form-control modern-input mb-3"
+                                        placeholder="Enter Product Name (Start typing...)"
+                                        autocomplete="off"
+                                        required
+                                    >
+                                    <datalist id="productList">
+                                    </datalist>
 
-                                <div class="mb-3">
-                                    <label id="lblPrice" for="posPrice" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Unit Price (₹)</label>
-                                    <input type="number" step="any" id="posPrice" class="form-control modern-input mb-3" placeholder="Select product to fetch price" required readonly>
+                                    <div class="mb-3">
+                                        <label id="lblPrice" for="posPrice" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Unit Price (₹)</label>
+                                        <input type="number" step="any" id="posPrice" class="form-control modern-input mb-3" placeholder="Select product to fetch price" required readonly>
+                                        
+                                        <label id="lblQuantity" for="posQuantity" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Quantity</label>
+                                        <input type="number" id="posQuantity" class="form-control modern-input" placeholder="Enter Quantity" required>
+                                    </div>
                                     
-                                    <label id="lblQuantity" for="posQuantity" class="form-label" style="font-size: 0.9em; color: #64748b; margin-bottom: 2px;">Quantity</label>
-                                    <input type="number" id="posQuantity" class="form-control modern-input" placeholder="Enter Quantity" required>
-                                </div>
-                                
-                                <div class="d-flex justify-content-between align-items-center mb-3">
-                                    <span style="font-weight: 500; color: #64748b;">Live Total:</span>
-                                    <span style="font-size: 1.15em; font-weight: bold; color: #2d3748;">₹<span id="liveTotal">0.00</span></span>
-                                </div>
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <span style="font-weight: 500; color: #64748b;">Live Total:</span>
+                                        <span style="font-size: 1.15em; font-weight: bold; color: #2d3748;">₹<span id="liveTotal">0.00</span></span>
+                                    </div>
 
-                                <button type="submit" class="btn modern-btn w-100 btn-sm">Add to Cart</button>
-                            </form>
+                                    <button type="submit" class="btn modern-btn w-100 btn-sm">Add to Cart</button>
+                                </form>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <!-- Recently scanned alert banner -->
-            <div id="lastScannedAlert" class="alert alert-success mt-3 d-none align-items-center gap-3 fade-in-up" role="alert" style="border-radius: 10px;">
-                <div style="font-size: 1.8rem; line-height: 1;"><i class="bi bi-qr-code-scan text-success"></i></div>
-                <div class="flex-grow-1">
-                    <div style="font-size: 0.78rem; color: #155724; font-weight: bold; text-transform: uppercase;">Product Scanned!</div>
-                    <div style="font-weight: bold; font-size: 1.05rem;" id="lastScannedName">Product Packet</div>
-                    <div style="font-size: 0.82rem;" id="lastScannedMeta">Price: ₹0.00 | Confidence: 0%</div>
+
+                <div id="lastScannedAlert" class="alert alert-success d-none align-items-center gap-3 fade-in-up" role="alert" style="border-radius: 10px;">
+                    <div style="font-size: 1.8rem; line-height: 1;"><i class="bi bi-qr-code-scan text-success"></i></div>
+                    <div class="flex-grow-1">
+                        <div style="font-size: 0.78rem; color: #155724; font-weight: bold; text-transform: uppercase;">Product Scanned!</div>
+                        <div style="font-weight: bold; font-size: 1.05rem;" id="lastScannedName">Product Packet</div>
+                        <div style="font-size: 0.82rem;" id="lastScannedMeta">Price: ₹0.00 | Confidence: 0%</div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- Right Column: Shopping Cart -->
-        <div class="modern-card hover-lift flex-fill" style="flex: 1.3;">
-            <div class="d-flex justify-content-between align-items-center mb-3">
+        <aside class="pos-cart-dock">
+            <div class="pos-cart-dock-head">
                 <h4 class="card-heading m-0" data-i18n="pos.cart">Shopping Cart</h4>
                 <button type="button" class="btn btn-outline-danger btn-sm" onclick="clearCart()"><i class="bi bi-trash"></i> <span data-i18n="pos.clearAll">Clear All</span></button>
             </div>
-            
-            <div class="table-responsive pos-cart-table-wrap">
-                <table class="table" id="cartTable">
-                    <thead class="table-light">
-                        <tr>
-                            <th data-i18n="pos.product">Product</th>
-                            <th data-i18n="pos.price">Price</th>
-                            <th data-i18n="pos.qty">Qty</th>
-                            <th data-i18n="pos.gst">GST</th>
-                            <th data-i18n="pos.total">Total</th>
-                            <th data-i18n="pos.action">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="cartBody">
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="pos-cart-totals text-end mt-3 mb-4">
-                <h6 class="pos-cart-subline"><span data-i18n="pos.subtotal">Subtotal</span>: ₹<span id="cartSubtotal">0.00</span></h6>
-                <h6 class="pos-cart-subline"><span data-i18n="pos.totalTax">Total Tax (GST)</span>: ₹<span id="cartTax">0.00</span></h6>
-                <h5 class="pos-cart-grand"><span data-i18n="pos.grandTotal">Grand Total</span>: ₹<span id="cartTotal">0.00</span></h5>
-            </div>
 
-            <button id="proceedBtn" type="button" class="btn pos-proceed-btn w-100 mb-3" style="display:none;" onclick="showPayment()" data-i18n="pos.proceedPay">Proceed to Pay</button>
-
-            <!-- Payment Section -->
-            <div id="paymentSection" class="pos-payment-panel" style="display: none;">
-                <h5 class="pos-payment-title mb-3" data-i18n="pos.paymentMethod">Payment Method</h5>
-                <div class="d-flex gap-2 mb-4">
-                    <button type="button" class="btn pos-pay-method flex-fill active" id="btnCash" onclick="setPayment('cash')" data-i18n="pos.cash">Cash</button>
-                    <button type="button" class="btn pos-pay-method flex-fill" id="btnCard" onclick="setPayment('card')" data-i18n="pos.card">Card</button>
+            <div class="pos-cart-dock-body">
+                <div class="table-responsive pos-cart-table-wrap">
+                    <table class="table" id="cartTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th data-i18n="pos.product">Product</th>
+                                <th data-i18n="pos.price">Price</th>
+                                <th data-i18n="pos.qty">Qty</th>
+                                <th data-i18n="pos.gst">GST</th>
+                                <th data-i18n="pos.total">Total</th>
+                                <th data-i18n="pos.action">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cartBody">
+                        </tbody>
+                    </table>
                 </div>
-                <button type="button" class="btn pos-receive-btn w-100" onclick="submitTransaction()" data-i18n="pos.receivedPayment">
-                    Received Payment
-                </button>
             </div>
-        </div>
+
+            <div class="pos-cart-dock-foot">
+                <div class="pos-cart-totals text-end mb-3">
+                    <h6 class="pos-cart-subline"><span data-i18n="pos.subtotal">Subtotal</span>: ₹<span id="cartSubtotal">0.00</span></h6>
+                    <h6 class="pos-cart-subline"><span data-i18n="pos.totalTax">Total Tax (GST)</span>: ₹<span id="cartTax">0.00</span></h6>
+                    <h5 class="pos-cart-grand"><span data-i18n="pos.grandTotal">Grand Total</span>: ₹<span id="cartTotal">0.00</span></h5>
+                </div>
+
+                <button id="proceedBtn" type="button" class="btn pos-proceed-btn w-100 mb-3" style="display:none;" onclick="showPayment()" data-i18n="pos.proceedPay">Proceed to Pay</button>
+
+                <div id="paymentSection" class="pos-payment-panel" style="display: none;">
+                    <h5 class="pos-payment-title mb-3" data-i18n="pos.paymentMethod">Payment Method</h5>
+                    <div class="d-flex gap-2 mb-4">
+                        <button type="button" class="btn pos-pay-method flex-fill active" id="btnCash" onclick="setPayment('cash')" data-i18n="pos.cash">Cash</button>
+                        <button type="button" class="btn pos-pay-method flex-fill" id="btnCard" onclick="setPayment('card')" data-i18n="pos.card">Card</button>
+                    </div>
+                    <button type="button" class="btn pos-receive-btn w-100" onclick="submitTransaction()" data-i18n="pos.receivedPayment">
+                        Received Payment
+                    </button>
+                </div>
+            </div>
+        </aside>
     </div>
     </div><!-- /checkout panel -->
 
@@ -1839,7 +1713,7 @@ async function submitTransaction() {
 })();
 </script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="/static/pos_intelligence.js?v=3"></script>
+<script src="/static/pos_intelligence.js?v=5"></script>
 
 </body>
 </html>

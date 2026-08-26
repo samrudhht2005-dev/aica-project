@@ -1,0 +1,37 @@
+{# Top command bar — brand, workspace switch, utilities #}
+<header class="aica-topbar" role="banner">
+    <a class="aica-brand" href="/select-interface" title="All workspaces">
+        <span class="aica-brand-mark" aria-hidden="true"></span>
+        <span class="aica-brand-word">AICA</span>
+    </a>
+
+    {% include "partials/workspace_switcher.html" %}
+
+    <div class="aica-topbar-end">
+        <div class="aica-lang-inline" id="aicaLangSwitch" data-i18n-title="assistant.language" title="Language">
+            <select id="aicaLangSelect" aria-label="Language" class="aica-lang-select" data-i18n-aria="assistant.language">
+                <option value="en" {% if preferred_language == 'en' %}selected{% endif %}>EN</option>
+                <option value="kn" {% if preferred_language == 'kn' %}selected{% endif %}>KN</option>
+                <option value="hi" {% if preferred_language == 'hi' %}selected{% endif %}>HI</option>
+            </select>
+        </div>
+        {% if auth_user %}
+        <div class="sidebar-profile aica-top-profile" id="sidebarProfile">
+            <button type="button" class="sidebar-profile-btn aica-top-profile-btn" id="profileMenuBtn" aria-expanded="false">
+                <span class="sidebar-avatar">{{ (auth_user.full_name or auth_user.email or 'U')[0] | upper }}</span>
+                <span class="sidebar-profile-copy">
+                    <strong>{{ auth_user.full_name or 'Account' }}</strong>
+                    <small>{{ auth_user.email }}</small>
+                </span>
+                <i class="bi bi-chevron-down sidebar-gear"></i>
+            </button>
+            <div class="sidebar-profile-menu aica-top-profile-menu" id="profileMenu" hidden>
+                <a href="/profile"><i class="bi bi-person"></i> <span data-i18n="nav.profile">Edit Profile</span></a>
+                <a href="/organization"><i class="bi bi-building"></i> <span data-i18n="nav.orgSettings">Edit Organization Details</span></a>
+                <a href="/select-interface"><i class="bi bi-grid-3x3-gap"></i> <span data-i18n="nav.changeWorkspace">All workspaces</span></a>
+                <a href="/logout"><i class="bi bi-box-arrow-left"></i> <span data-i18n="nav.logout">Log Out</span></a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</header>
