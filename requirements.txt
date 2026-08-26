@@ -10,3 +10,6 @@ google-genai
 python-dotenv
 opencv-python
 ultralytics
+# Desktop Engine YOLO (CPU Torch) — NOT installed by a plain `pip install -r requirements.txt`
+# because the default PyPI torch wheel may be CUDA. For AICA.Engine packaging:
+#   .\venv\Scripts\pip.exe install -r desktop\requirements-engine.txt --index-url https://download.pytorch.org/whl/cpu

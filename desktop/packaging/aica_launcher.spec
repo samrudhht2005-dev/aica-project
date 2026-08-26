@@ -5,6 +5,18 @@ from pathlib import Path
 ROOT = Path(SPECPATH).resolve().parents[1]
 block_cipher = None
 
+# Fail-fast: Piper Amy must be present (gitignored .onnx). Never ship SAPI-only by accident.
+_piper_onnx = ROOT / "desktop" / "voice" / "models" / "piper" / "en_US-amy-medium.onnx"
+_piper_json = ROOT / "desktop" / "voice" / "models" / "piper" / "en_US-amy-medium.onnx.json"
+if not _piper_onnx.is_file() or _piper_onnx.stat().st_size < 50_000_000:
+    raise SystemExit(
+        "Piper Amy model missing or too small. Before building the launcher run:\n"
+        "  .\\venv\\Scripts\\python.exe desktop\\scripts\\setup_piper_voice.py\n"
+        f"Expected: {_piper_onnx}"
+    )
+if not _piper_json.is_file():
+    raise SystemExit(f"Piper Amy config missing: {_piper_json}")
+
 voice_models = ROOT / "desktop" / "voice" / "models"
 voice_assets = ROOT / "desktop" / "voice" / "assets"
 datas = []
@@ -48,6 +60,11 @@ if _piper_espeak and _piper_espeak.is_dir():
         if sub.is_file():
             rel = sub.relative_to(_piper_espeak)
             datas.append((str(sub), str(Path("piper") / "espeak-ng-data" / rel.parent)))
+else:
+    raise SystemExit(
+        "piper espeak-ng-data not found. Install piper-tts in the build venv:\n"
+        "  .\\venv\\Scripts\\pip.exe install -r desktop\\requirements-voice.txt"
+    )
 
 hiddenimports = [
     "webview",

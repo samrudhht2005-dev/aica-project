@@ -1,0 +1,14 @@
+# AICA.Engine vision stack — CPU-only Torch (required before PyInstaller engine build).
+#
+# Install into the project venv (do NOT use the default CUDA PyPI torch wheel):
+#
+#   .\venv\Scripts\pip.exe install -r desktop\requirements-engine.txt ^
+#       --index-url https://download.pytorch.org/whl/cpu
+#
+# Verified with ultralytics 8.4.x during AI Camera Phase 2 (CPU inference).
+# CUDA wheels must NOT be used for release builds — packaged Engine is CPU-only.
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu
+torchvision==0.28.0+cpu
+ultralytics>=8.4.0,<9
