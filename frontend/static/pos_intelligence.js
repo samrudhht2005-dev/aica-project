@@ -135,6 +135,22 @@
         if (tab === "qr-status" && typeof window.loadPosQrStatus === "function") {
             window.loadPosQrStatus();
         }
+        const newSaleBtn = $("#posQuickNewSale");
+        if (newSaleBtn) {
+            newSaleBtn.hidden = tab === "checkout";
+        }
+    }
+
+    function setQrStatusFilter(status) {
+        const allowed = { all: 1, active: 1, redeemed: 1, cancelled: 1 };
+        const st = String(status || "all").toLowerCase();
+        const filter = $("#posQrStatusFilter");
+        if (!filter || !allowed[st]) return;
+        filter.value = st;
+        setActiveTab("qr-status");
+        if (typeof window.loadPosQrStatus === "function") {
+            window.loadPosQrStatus();
+        }
     }
 
     async function loadIntelligence() {
@@ -553,7 +569,7 @@
         });
     }
 
-    window.AICA_POS_INTEL = { setActiveTab, loadIntelligence, openInvoice, downloadInvoiceFile };
+    window.AICA_POS_INTEL = { setActiveTab, setQrStatusFilter, loadIntelligence, openInvoice, downloadInvoiceFile };
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
     else bind();
 })();

@@ -13,7 +13,7 @@ from typing import Any
 
 from desktop.launcher.voice_audio import MicCapture
 from desktop.launcher.voice_diag import vdiag
-from desktop.launcher.voice_intents import match_intent
+from desktop.launcher.voice_intents import intent_ui_hints, match_intent
 from desktop.launcher.voice_legacy import LegacySpeechBackend
 from desktop.launcher.voice_log import vlog
 from desktop.launcher.voice_stt import WhisperSTT
@@ -194,7 +194,7 @@ class ModernVoiceEngine:
             return self._legacy_backend().start_voice_listen(silence_ms, hold_ms)
 
         mode = (ui_mode or "org").strip().lower()
-        if mode not in ("pos", "org"):
+        if mode not in ("pos", "org", "weigh"):
             mode = "org"
         self._ui_mode = mode
         vdiag("COMMAND_UI_MODE", ui_mode=self._ui_mode)
@@ -324,7 +324,11 @@ class ModernVoiceEngine:
                     if intent:
                         payload["intent"] = intent.intent.name
                         payload["intent_path"] = intent.intent.path
+                        payload["intent_speak"] = intent.intent.speak
                         payload["intent_score"] = intent.score
+                        ui = intent_ui_hints(intent.intent.name)
+                        if ui:
+                            payload["intent_ui"] = ui
                     total_ms = (time.perf_counter() - t_cmd0) * 1000.0
                     vdiag(
                         "COMMAND_LATENCY_BREAKDOWN",

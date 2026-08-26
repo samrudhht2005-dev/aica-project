@@ -4,6 +4,9 @@
  * Does not replace /api/assistant or Gemini; voice feeds the same pipeline.
  */
 (function () {
+    // Prevent duplicate listeners/pollers if a page loads this script twice.
+    if (window.__AICA_IRA_INIT__) return;
+
     const fab = document.getElementById("aicaFab");
     const panel = document.getElementById("aicaChat");
     const closeBtn = document.getElementById("aicaChatClose");
@@ -18,6 +21,7 @@
     const overlay = document.getElementById("iraOverlay");
     const statusText = document.getElementById("iraStatusText");
     if (!fab || !panel || !form) return;
+    window.__AICA_IRA_INIT__ = true;
 
     const PAGE = window.AICA_PAGE || "dashboard";
     const PATH = window.AICA_PATH || location.pathname;
@@ -129,42 +133,74 @@
         payload = payload || {};
         iraLog("desktop_voice", event, payload);
         if (event === "wake") {
-            stopDesktopPoll();
+            // Keep polling so command-listen events after wake are received.
             desktopVoiceActive = false;
             ambientActive = true;
             localStorage.setItem(AMBIENT_KEY, "1");
             onWakeDetected(String(payload.text || ""));
             return;
         }
-        if (!listenSession || !listenSession.active) {
-            if (event === "ended" && payload.mode === "wake") {
-                // Ambient wake cycle ended without match — restart if still enabled
+        // Wake teardown must never abort an active click-to-talk / post-wake command session.
+        if (event === "ended" && payload.mode === "wake") {
+            if (!listenSession || !listenSession.active) {
                 if (ambientActive && !document.hidden && (iraMode === "idle" || iraMode === "complete")) {
                     clearTimeout(ambientRestartTimer);
                     ambientRestartTimer = setTimeout(() => startAmbientWake(), 500);
                 }
-                return;
             }
+            return;
+        }
+        if (!listenSession || !listenSession.active) {
             if (event === "error" && payload.message) softAck(String(payload.message));
             return;
         }
         if (event === "started") {
-            if (statusText) statusText.textContent = t("assistant.listening", "Listening…");
+            if (payload.mode === "command" || !payload.mode) {
+                if (statusText) statusText.textContent = t("assistant.listening", "Listening…");
+            }
+            return;
+        }
+        if (event === "processing") {
+            // Capture ended; Whisper/intent still running — leave Listening immediately.
+            setVoiceUI("thinking");
+            if (voiceStatus) {
+                voiceStatus.hidden = false;
+                voiceStatus.textContent = t("assistant.processing", "Processing…");
+            }
+            setIraMode("thinking", t("assistant.processing", "Processing…"));
             return;
         }
         if (event === "hypothesis" || event === "partial") {
             const text = String(payload.text || "").trim();
-            if (text && statusText) statusText.textContent = text;
-            if (event === "partial" && text) listenSession.buffer = text;
+            if (text) {
+                listenSession.buffer = text;
+                setVoiceUI("thinking");
+                setIraMode("thinking", text);
+                if (statusText) statusText.textContent = text;
+            }
             return;
         }
         if (event === "final") {
             const text = String(payload.text || "").trim();
-            if (text) listenSession.buffer = text;
-            if (statusText && text) statusText.textContent = text;
+            if (text) {
+                listenSession.buffer = text;
+                setVoiceUI("thinking");
+                setIraMode("thinking", text);
+                if (statusText) statusText.textContent = text;
+            }
             return;
         }
         if (event === "ended") {
+            // Only command-mode endings close the listen session.
+            if (payload.mode && payload.mode !== "command") return;
+            if (payload.error === "cancelled") {
+                stopDesktopPoll();
+                desktopVoiceActive = false;
+                listenSession.active = false;
+                clearListenTimers();
+                listenSession = null;
+                return;
+            }
             stopDesktopPoll();
             desktopVoiceActive = false;
             const text = String(
@@ -174,22 +210,27 @@
             clearListenTimers();
             listenSession = null;
             if (!text) {
-                endListenGracefully(t("assistant.didntCatch", "I didn't catch that — try the mic again."));
+                const err = String((payload && payload.error) || "");
+                if (err === "no_speech" || err === "empty_capture") {
+                    endListenGracefully(
+                        t("assistant.didntHear", "I didn't hear anything. Please try again.")
+                    );
+                } else {
+                    endListenGracefully(
+                        t("assistant.didntUnderstand", "I didn't understand that. Please try again.")
+                    );
+                }
                 return;
             }
-            // Backend intent routing (faster-whisper path)
+            // Backend intent routing (faster-whisper path) — one-shot navigation.
             if (payload && payload.intent_path && payload.intent) {
                 openPanel();
                 state.messages.push({ role: "user", text: text });
-                const speakLine = navSpeakForIntent(payload.intent) || "Done.";
+                const speakLine = String(payload.intent_speak || "").trim() || "Done.";
                 state.messages.push({ role: "assistant", text: speakLine });
                 saveState(state);
                 renderMessages();
-                speak(speakLine, () => {
-                    state.pendingIntro = true;
-                    saveState(state);
-                    window.location.href = payload.intent_path;
-                });
+                completeNavigationCommand(payload.intent_path, speakLine, payload.intent_ui || null);
                 return;
             }
             handleUserCommand(text, true);
@@ -370,9 +411,12 @@
         commandRestartTimer = null;
     }
 
-    function stopCommandListening() {
+    function stopCommandListening(opts) {
         clearListenTimers();
-        stopDesktopPoll();
+        // Wake → command handoff must keep the desktop event poll alive.
+        if (!(opts && opts.keepPoll)) {
+            stopDesktopPoll();
+        }
         if (listenSession) listenSession.active = false;
         if (desktopVoiceActive && hasDesktopVoiceApi()) {
             desktopVoiceActive = false;
@@ -400,6 +444,13 @@
     function cancelVoice() {
         stopCommandListening();
         stopSpeech();
+        if (hasDesktopVoiceApi()) {
+            try {
+                if (typeof window.pywebview.api.cancel_speak === "function") {
+                    window.pywebview.api.cancel_speak();
+                }
+            } catch (e) { /* ignore */ }
+        }
         listenSession = null;
         pendingConfirm = null;
         setVoiceUI("idle");
@@ -430,19 +481,176 @@
     }
 
     function navSpeakForIntent(intentName) {
+        // Prefer payload.intent_speak from Python VoiceIntent.speak (authoritative).
+        // This map is a thin browser/fallback only for legacy paths.
         const map = {
             OPEN_DASHBOARD: "Sure, opening your dashboard.",
             OPEN_EXPENSES: "Sure, opening your expenses.",
             OPEN_SALES: "Sure, opening sales.",
             OPEN_POS: "Sure, switching you to POS.",
-            OPEN_INVENTORY: "Sure, opening inventory.",
+            OPEN_INVENTORY: "Opening the warehouse.",
             OPEN_BILLING: "Sure, opening the billing counter.",
             OPEN_REPORTS: "Sure, opening reports.",
             OPEN_ANALYTICS: "Sure, opening sales analytics.",
             OPEN_ORGANIZATION: "Sure, opening organization settings.",
             OPEN_INTERFACE: "Sure, opening interface selection.",
+            OPEN_WEIGH: "Opening Weigh.",
+            OPEN_WEIGH_HISTORY: "Opening weigh history.",
+            OPEN_POS_QR_STATUS: "Opening QR status.",
         };
         return map[intentName] || null;
+    }
+
+    /** Navigate including /pos#tab and /weigh#tab without full reload when already there. */
+    function navigateToPath(path, intentUi) {
+        const target = String(path || "").trim();
+        if (!target) return;
+        const hashIdx = target.indexOf("#");
+        const pathname = hashIdx >= 0 ? target.slice(0, hashIdx) : target;
+        const hash = hashIdx >= 0 ? target.slice(hashIdx + 1) : "";
+        const here = window.location.pathname || "";
+        const ui = intentUi && typeof intentUi === "object" ? intentUi : null;
+
+        if (pathname === "/pos" && here === "/pos") {
+            const tab = (ui && ui.pos_tab) || hash || "checkout";
+            if (window.AICA_POS_INTEL && typeof window.AICA_POS_INTEL.setActiveTab === "function") {
+                window.AICA_POS_INTEL.setActiveTab(tab);
+                if (ui && ui.qr_filter && typeof window.AICA_POS_INTEL.setQrStatusFilter === "function") {
+                    window.AICA_POS_INTEL.setQrStatusFilter(ui.qr_filter);
+                }
+                return;
+            }
+            if (hash) {
+                window.location.hash = hash;
+                return;
+            }
+        }
+        if (pathname === "/weigh" && here === "/weigh") {
+            const tab = (ui && ui.weigh_tab) || (hash === "history" ? "history" : "generate");
+            if (window.AICA_WEIGH && typeof window.AICA_WEIGH.setWeighTab === "function") {
+                window.AICA_WEIGH.setWeighTab(tab);
+                if (ui && ui.qr_filter && typeof window.AICA_WEIGH.setHistoryFilter === "function") {
+                    window.AICA_WEIGH.setHistoryFilter(ui.qr_filter);
+                }
+                return;
+            }
+            if (hash) {
+                window.location.hash = hash;
+                return;
+            }
+        }
+        stashVoiceUi(ui);
+        window.location.href = target;
+    }
+
+    /** Fade IRA UI after navigation — does NOT cancel acknowledgement TTS. */
+    function deactivateIraUiAfterNav() {
+        stopDesktopPoll();
+        desktopVoiceActive = false;
+        if (listenSession) listenSession.active = false;
+        listenSession = null;
+        clearListenTimers();
+        setVoiceUI("idle");
+        setIraMode("complete");
+    }
+
+    /**
+     * Navigation one-shot:
+     * 1) start short native ack (async, survives page navigate)
+     * 2) navigate immediately
+     * 3) reset IRA UI without cancel_speak (ack keeps playing)
+     * cancel_speak only on manual close / new listen (cancelVoice / start listen).
+     */
+    function completeNavigationCommand(path, speakLine, intentUi) {
+        state.pendingIntro = true;
+        saveState(state);
+        const plain = plainTextForSpeech(speakLine || "");
+        iraLog("nav_ack_start", { path: path, text: plain });
+
+        // Fire-and-forget native ack BEFORE navigate. Do not set Speaking UI.
+        if (plain && hasNativeTts() && isModernVoiceBackend()
+            && typeof window.pywebview.api.speak_response_async === "function") {
+            try {
+                Promise.resolve(window.pywebview.api.speak_response_async(plain))
+                    .then((res) => iraLog("nav_ack_queued", res))
+                    .catch((err) => iraLog("nav_ack_err", String(err)));
+            } catch (e) {
+                iraLog("nav_ack_err", String(e));
+            }
+        } else if (plain && window.speechSynthesis) {
+            try {
+                window.speechSynthesis.cancel();
+                const utter = new SpeechSynthesisUtterance(plain);
+                utter.lang = speechLang();
+                utter.rate = 1.12;
+                utter.volume = 0.9;
+                window.speechSynthesis.speak(utter);
+            } catch (e) { /* ignore */ }
+        }
+
+        navigateToPath(path, intentUi || null);
+        // UI reset only — leave async native TTS running.
+        deactivateIraUiAfterNav();
+        iraLog("nav_ack_ui_reset", { path: path });
+    }
+
+    function stashVoiceUi(intentUi) {
+        if (!intentUi || typeof intentUi !== "object") return;
+        try {
+            sessionStorage.setItem("aica_voice_ui", JSON.stringify(intentUi));
+        } catch (e) { /* ignore */ }
+    }
+
+    function peekVoiceUi() {
+        try {
+            const raw = sessionStorage.getItem("aica_voice_ui");
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function clearVoiceUi() {
+        try { sessionStorage.removeItem("aica_voice_ui"); } catch (e) { /* ignore */ }
+    }
+
+    function applyVoiceUi(intentUi) {
+        const ui = intentUi && typeof intentUi === "object" ? intentUi : null;
+        if (!ui) return false;
+        const here = window.location.pathname || "";
+        if (here === "/pos") {
+            if (!(window.AICA_POS_INTEL && typeof window.AICA_POS_INTEL.setActiveTab === "function")) {
+                return false;
+            }
+            if (ui.pos_tab) window.AICA_POS_INTEL.setActiveTab(ui.pos_tab);
+            if (ui.qr_filter && typeof window.AICA_POS_INTEL.setQrStatusFilter === "function") {
+                window.AICA_POS_INTEL.setQrStatusFilter(ui.qr_filter);
+            }
+            return true;
+        }
+        if (here === "/weigh") {
+            if (!(window.AICA_WEIGH && typeof window.AICA_WEIGH.setWeighTab === "function")) {
+                return false;
+            }
+            if (ui.weigh_tab) window.AICA_WEIGH.setWeighTab(ui.weigh_tab);
+            if (ui.qr_filter && typeof window.AICA_WEIGH.setHistoryFilter === "function") {
+                window.AICA_WEIGH.setHistoryFilter(ui.qr_filter);
+            }
+            return true;
+        }
+        return true;
+    }
+
+    function tryApplyStashedVoiceUi(attempt) {
+        const ui = peekVoiceUi();
+        if (!ui) return;
+        if (applyVoiceUi(ui)) {
+            clearVoiceUi();
+            return;
+        }
+        if ((attempt || 0) < 25) {
+            setTimeout(() => tryApplyStashedVoiceUi((attempt || 0) + 1), 120);
+        }
     }
 
     function speak(text, onDone) {
@@ -684,15 +892,11 @@
             saveState(state);
             renderMessages();
             if (fromVoice) {
-                speak(nav.speak, () => {
-                    state.pendingIntro = true;
-                    saveState(state);
-                    window.location.href = nav.path;
-                });
+                completeNavigationCommand(nav.path, nav.speak);
             } else {
                 state.pendingIntro = true;
                 saveState(state);
-                window.location.href = nav.path;
+                navigateToPath(nav.path);
             }
             return;
         }
@@ -724,7 +928,7 @@
         stopCommandListening();
         listenSession = null;
         if (!transcript) {
-            endListenGracefully(t("assistant.didntCatch", "I didn't catch that — say Hey IRA again."));
+            endListenGracefully(t("assistant.didntHear", "I didn't hear anything. Please try again."));
             return;
         }
         handleUserCommand(transcript, true);
@@ -830,8 +1034,9 @@
         const silenceMs = (opts && opts.silenceMs) || 1400;
         const keepTts = !!(opts && opts.keepTts);
         stopAmbient();
-        stopCommandListening();
-        // Stop leftover TTS unless caller is about to play a wake soft-ack (keepTts).
+        stopCommandListening({ keepPoll: true });
+        // New interaction owns the mic — stop leftover navigation acks unless caller
+        // is about to play a wake soft-ack (keepTts).
         if (!keepTts) {
             stopSpeech();
             if (hasDesktopVoiceApi()) {
@@ -857,23 +1062,29 @@
         desktopVoiceActive = true;
         setVoiceUI("listening");
         setIraMode("listening", t("assistant.listening", "Listening…"));
-        startDesktopEventPoll();
         iraLog("desktop_listen_start", { holdMs, silenceMs, keepTts: keepTts });
 
         const api = window.pywebview.api;
-        Promise.resolve(api.start_voice_listen(silenceMs, holdMs))
+        const uiMode = (function () {
+            const m = String(window.AICA_UI_MODE || "org").toLowerCase();
+            if (m === "pos" || m === "weigh") return m;
+            return "org";
+        })();
+        // Start backend first (drains stale wake 'ended' events), then poll.
+        Promise.resolve(api.start_voice_listen(silenceMs, holdMs, uiMode))
             .then((res) => {
                 iraLog("desktop_listen_result", res);
+                if (!listenSession || !listenSession.active) return;
                 if (res && res.ok === false) {
-                    stopDesktopPoll();
                     desktopVoiceActive = false;
                     endListenGracefully(
                         (res && res.error) || t("assistant.micError", "Could not start the microphone.")
                     );
+                    return;
                 }
+                startDesktopEventPoll();
             })
             .catch((err) => {
-                stopDesktopPoll();
                 desktopVoiceActive = false;
                 iraLog("desktop_listen_err", String(err));
                 endListenGracefully(t("assistant.micError", "Could not start the microphone."));
@@ -959,6 +1170,13 @@
         stopAmbient();
         clearTimeout(fadeTimer);
         stopSpeech();
+        if (hasDesktopVoiceApi()) {
+            try {
+                if (typeof window.pywebview.api.cancel_speak === "function") {
+                    window.pywebview.api.cancel_speak();
+                }
+            } catch (e) { /* ignore */ }
+        }
 
         // Immediate visual wake — don't wait on TTS
         setIraMode("wake", t("assistant.imListening", "I'm listening."));
@@ -975,7 +1193,7 @@
             return;
         }
 
-        // Start listen first, then Piper soft-ack so it is not cancelled by listen start.
+        // Start listen first (cancels leftover nav TTS), then Piper soft-ack so it is not killed.
         startCommandListening({ holdMs: 20000, silenceMs: 1400, ignoreMs: 400, keepTts: true });
         softAck(t("assistant.imListening", "I'm listening."));
     }
@@ -1133,6 +1351,9 @@
     });
 
     renderMessages();
+
+    // Apply cross-page voice navigation hints (tab/filter) after page scripts load.
+    setTimeout(() => tryApplyStashedVoiceUi(0), 200);
 
     // Enable ambient wake (desktop = System.Speech; web = Web Speech)
     ambientActive = true;

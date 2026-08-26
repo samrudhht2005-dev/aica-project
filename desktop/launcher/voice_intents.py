@@ -36,7 +36,7 @@ INTENTS: list[VoiceIntent] = [
     VoiceIntent("OPEN_POS_HISTORY", "/pos#history", "Sales History", "Sure, opening sales history."),
     VoiceIntent("OPEN_INVOICES", "/pos#invoices", "Invoices", "Sure, opening invoices."),
     VoiceIntent("OPEN_POS_PRODUCTS", "/pos#products", "Product Performance", "Sure, opening product performance."),
-    VoiceIntent("OPEN_INVENTORY", "/warehouse", "Inventory", "Sure, opening inventory."),
+    VoiceIntent("OPEN_INVENTORY", "/warehouse", "Inventory", "Opening the warehouse."),
     VoiceIntent("OPEN_BILLING", "/pos#checkout", "Billing", "Sure, opening the billing counter."),
     VoiceIntent("OPEN_REPORTS", "/reports", "Reports", "Sure, opening reports."),
     VoiceIntent("OPEN_ANALYTICS", "/sales", "Sales Analytics", "Sure, opening sales analytics."),
@@ -59,7 +59,29 @@ INTENTS: list[VoiceIntent] = [
         "Interface",
         "Sure, opening interface selection.",
     ),
+    VoiceIntent("OPEN_WEIGH", "/weigh", "Weigh", "Opening Weigh."),
+    VoiceIntent("OPEN_WEIGH_HISTORY", "/weigh#history", "Weigh History", "Opening weigh history."),
+    VoiceIntent("OPEN_POS_QR_STATUS", "/pos#qr-status", "QR Status", "Opening QR status."),
+    VoiceIntent("OPEN_POS_QR_ACTIVE", "/pos#qr-status", "Active QR", "Showing active QR tickets."),
+    VoiceIntent("OPEN_POS_QR_REDEEMED", "/pos#qr-status", "Redeemed QR", "Showing redeemed QR tickets."),
+    VoiceIntent("OPEN_POS_QR_CANCELLED", "/pos#qr-status", "Cancelled QR", "Showing cancelled QR tickets."),
+    VoiceIntent("OPEN_WEIGH_QR_ACTIVE", "/weigh#history", "Active QR", "Showing active QR tickets."),
+    VoiceIntent("OPEN_WEIGH_QR_REDEEMED", "/weigh#history", "Redeemed QR", "Showing redeemed QR tickets."),
+    VoiceIntent("OPEN_WEIGH_QR_CANCELLED", "/weigh#history", "Cancelled QR", "Showing cancelled QR tickets."),
 ]
+
+# Optional UI hints applied after navigation (filters / tabs). Authoritative with intents.
+INTENT_UI: dict[str, dict[str, str]] = {
+    "OPEN_POS_QR_ACTIVE": {"pos_tab": "qr-status", "qr_filter": "active"},
+    "OPEN_POS_QR_REDEEMED": {"pos_tab": "qr-status", "qr_filter": "redeemed"},
+    "OPEN_POS_QR_CANCELLED": {"pos_tab": "qr-status", "qr_filter": "cancelled"},
+    "OPEN_POS_QR_STATUS": {"pos_tab": "qr-status"},
+    "OPEN_WEIGH_HISTORY": {"weigh_tab": "history"},
+    "OPEN_WEIGH": {"weigh_tab": "generate"},
+    "OPEN_WEIGH_QR_ACTIVE": {"weigh_tab": "history", "qr_filter": "active"},
+    "OPEN_WEIGH_QR_REDEEMED": {"weigh_tab": "history", "qr_filter": "redeemed"},
+    "OPEN_WEIGH_QR_CANCELLED": {"weigh_tab": "history", "qr_filter": "cancelled"},
+}
 
 # Canonical phrases per intent (lowercase). Used for fuzzy matching.
 INTENT_PHRASES: dict[str, list[str]] = {
@@ -232,6 +254,84 @@ INTENT_PHRASES: dict[str, list[str]] = {
         "switch interface",
         "select interface",
     ],
+    "OPEN_WEIGH": [
+        "open weigh",
+        "go to weigh",
+        "show weigh",
+        "take me to weigh",
+        "open weighing",
+        "go to weighing",
+        "switch to weigh",
+        "switch to weigh workspace",
+        "open weigh workspace",
+        "weigh workspace",
+    ],
+    "OPEN_WEIGH_HISTORY": [
+        "open weigh history",
+        "go to weigh history",
+        "show weigh history",
+        "take me to weigh history",
+        "open qr history",
+        "show qr history",
+        "go to qr history",
+        "take me to qr history",
+        "weigh ticket history",
+        "qr ticket history",
+        "show ticket history",
+        "open ticket history",
+    ],
+    "OPEN_POS_QR_STATUS": [
+        "open qr status",
+        "go to qr status",
+        "show qr status",
+        "take me to qr status",
+        "open qr status tab",
+        "show qr tickets",
+        "pos qr status",
+    ],
+    "OPEN_POS_QR_ACTIVE": [
+        "show active qr",
+        "show active qr tickets",
+        "open active qr",
+        "open active qr tickets",
+        "show active tickets",
+        "active qr tickets",
+        "active qr status",
+    ],
+    "OPEN_POS_QR_REDEEMED": [
+        "show redeemed qr",
+        "show redeemed qr tickets",
+        "open redeemed qr",
+        "open redeemed qr tickets",
+        "show redeemed tickets",
+        "redeemed qr tickets",
+    ],
+    "OPEN_POS_QR_CANCELLED": [
+        "show cancelled qr",
+        "show cancelled qr tickets",
+        "open cancelled qr",
+        "open cancelled qr tickets",
+        "show canceled qr",
+        "show canceled qr tickets",
+        "show cancelled tickets",
+        "cancelled qr tickets",
+    ],
+    "OPEN_WEIGH_QR_ACTIVE": [
+        "show active weigh tickets",
+        "active weigh tickets",
+        "weigh active qr",
+    ],
+    "OPEN_WEIGH_QR_REDEEMED": [
+        "show redeemed weigh tickets",
+        "redeemed weigh tickets",
+        "weigh redeemed qr",
+    ],
+    "OPEN_WEIGH_QR_CANCELLED": [
+        "show cancelled weigh tickets",
+        "cancelled weigh tickets",
+        "show canceled weigh tickets",
+        "weigh cancelled qr",
+    ],
 }
 
 WAKE_RE = re.compile(
@@ -330,6 +430,11 @@ def detect_wake(text: str) -> bool:
     return _fuzzy_wake_match(text)
 
 
+def intent_ui_hints(intent_name: str) -> dict[str, str] | None:
+    hints = INTENT_UI.get(intent_name)
+    return dict(hints) if hints else None
+
+
 def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
     """Return best navigation intent or None (caller may route to Gemini)."""
     raw = strip_wake(text)
@@ -338,7 +443,7 @@ def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
         return None
 
     mode = (ui_mode or "org").strip().lower()
-    if mode not in ("pos", "org"):
+    if mode not in ("pos", "org", "weigh"):
         mode = "org"
 
     best: IntentMatch | None = None
@@ -363,6 +468,21 @@ def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
             path = "/pos#overview"
             speak = "Sure, opening sales overview."
             label = "Sales Overview"
+        # Weigh workspace: bare "history" / non-POS history → weigh history, not POS sales history.
+        if intent_name == "OPEN_POS_HISTORY" and mode == "weigh" and not re.search(
+            r"\b(sales|pos)\b", norm
+        ):
+            continue
+        # POS-scoped QR filter intents only when in POS or user said pos.
+        if intent_name.startswith("OPEN_POS_QR_") and mode == "weigh" and not re.search(
+            r"\bpos\b", norm
+        ):
+            continue
+        # Weigh-scoped QR filter intents only when in weigh (or explicit weigh phrasing).
+        if intent_name.startswith("OPEN_WEIGH_QR_") and mode != "weigh" and not re.search(
+            r"\bweigh\b", norm
+        ):
+            continue
 
         intent = VoiceIntent(intent.name, path, label, speak)
 
@@ -433,6 +553,29 @@ def match_intent(text: str, *, ui_mode: str = "org") -> IntentMatch | None:
         alt = _intent_by_name("OPEN_ORGANIZATION_SETTINGS")
         if alt:
             best = IntentMatch(intent=alt, score=1.0, method="settings_priority")
+
+    # Weigh mode: bare history → weigh history.
+    if mode == "weigh" and re.search(r"\bhistory\b", norm) and not re.search(
+        r"\b(sales|pos|invoice)\b", norm
+    ):
+        alt = _intent_by_name("OPEN_WEIGH_HISTORY")
+        if alt:
+            best = IntentMatch(intent=alt, score=1.0, method="weigh_history_priority")
+
+    # QR status priority (POS UI).
+    if re.search(r"\bqr\s+status\b", norm) or (
+        re.search(r"\bqr\b", norm) and re.search(r"\bstatus\b", norm)
+    ):
+        if re.search(r"\bactive\b", norm):
+            alt = _intent_by_name("OPEN_POS_QR_ACTIVE" if mode != "weigh" else "OPEN_WEIGH_QR_ACTIVE")
+        elif re.search(r"\bredeemed\b", norm):
+            alt = _intent_by_name("OPEN_POS_QR_REDEEMED" if mode != "weigh" else "OPEN_WEIGH_QR_REDEEMED")
+        elif re.search(r"\bcancell?ed\b", norm):
+            alt = _intent_by_name("OPEN_POS_QR_CANCELLED" if mode != "weigh" else "OPEN_WEIGH_QR_CANCELLED")
+        else:
+            alt = _intent_by_name("OPEN_POS_QR_STATUS" if mode != "weigh" else "OPEN_WEIGH_HISTORY")
+        if alt:
+            best = IntentMatch(intent=alt, score=1.0, method="qr_status_priority")
 
     return best
 

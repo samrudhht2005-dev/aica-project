@@ -367,6 +367,18 @@
         if (t === 'history') loadHistory();
     }
 
+    function setHistoryFilter(status) {
+        const allowed = { all: 1, active: 1, redeemed: 1, cancelled: 1 };
+        const st = String(status || 'all').toLowerCase();
+        const filter = document.getElementById('weighHistoryFilter');
+        if (!filter || !allowed[st]) return;
+        filter.value = st;
+        setWeighTab('history');
+        loadHistory();
+    }
+
+    window.AICA_WEIGH = { setWeighTab: setWeighTab, setHistoryFilter: setHistoryFilter };
+
     document.querySelectorAll('[data-weigh-tab]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             setWeighTab(btn.getAttribute('data-weigh-tab'));
@@ -727,7 +739,6 @@
     });
 })();
 </script>
-<script src="/static/i18n.js"></script>
-<script src="/static/assistant.js"></script>
+{# IRA / i18n come from partials/chrome.html via sidebar_weigh — do not load again. #}
 </body>
 </html>
