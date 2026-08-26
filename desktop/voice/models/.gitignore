@@ -8,3 +8,6 @@ model/
 **/whisper-small.en/
 **/openwakeword/
 hey_ira.json
+# Piper Amy is required for IRA TTS — keep json tracked; onnx stays local/packaged
+!piper/
+!piper/*.onnx.json

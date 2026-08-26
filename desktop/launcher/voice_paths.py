@@ -248,3 +248,52 @@ def faster_whisper_assets_dir() -> Path:
         return Path(faster_whisper.__file__).resolve().parent / "assets"
     except Exception:
         return Path(__file__).resolve().parents[1] / "voice" / "assets"
+
+
+def piper_voice_dir() -> Path:
+    """Directory containing en_US-amy-medium.onnx (+ .onnx.json)."""
+    explicit = os.environ.get("AICA_PIPER_VOICE_DIR")
+    if explicit:
+        return Path(explicit)
+    return voice_models_dir() / "piper"
+
+
+def piper_voice_model_path() -> Path:
+    explicit = os.environ.get("AICA_PIPER_MODEL")
+    if explicit:
+        return Path(explicit)
+    return piper_voice_dir() / "en_US-amy-medium.onnx"
+
+
+def piper_voice_config_path() -> Path:
+    model = piper_voice_model_path()
+    return model.with_suffix(model.suffix + ".json")  # .onnx.json
+
+
+def piper_espeak_data_dir() -> Path:
+    """
+    espeak-ng phonemizer data shipped with piper-tts (dev) or bundled next to
+    the frozen app under piper/espeak-ng-data.
+    """
+    explicit = os.environ.get("AICA_PIPER_ESPEAK_DATA")
+    if explicit:
+        return Path(explicit)
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", None)
+        candidates: list[Path] = []
+        if meipass:
+            candidates.append(Path(meipass) / "piper" / "espeak-ng-data")
+            candidates.append(Path(meipass) / "desktop" / "voice" / "piper" / "espeak-ng-data")
+        candidates.append(Path(sys.executable).resolve().parent / "piper" / "espeak-ng-data")
+        for c in candidates:
+            if c.is_dir():
+                return c
+    try:
+        import piper
+
+        bundled = Path(piper.__file__).resolve().parent / "espeak-ng-data"
+        if bundled.is_dir():
+            return bundled
+    except Exception:
+        pass
+    return _repo_voice_root() / "piper" / "espeak-ng-data"

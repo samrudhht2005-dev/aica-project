@@ -6,6 +6,7 @@ Download / prepare voice models for AICA desktop (dev machine).
 Downloads:
   - faster-whisper base.en  -> desktop/voice/models/whisper-base.en
   - openWakeWord backbone   -> desktop/voice/models/openwakeword/ (optional OWW path)
+  - Piper en_US-amy-medium  -> desktop/voice/models/piper/ (IRA neural TTS; ~60 MB, not in Git)
 """
 from __future__ import annotations
 
@@ -48,6 +49,14 @@ def download_oww_backbone() -> None:
     print("OK openWakeWord backbone at", oww_resource_dir())
 
 
+def download_piper_amy() -> None:
+    from desktop.scripts.setup_piper_voice import main as setup_piper
+
+    code = setup_piper()
+    if code != 0:
+        raise RuntimeError(f"setup_piper_voice failed with code {code}")
+
+
 def build_wake_references() -> None:
     from desktop.scripts.train_hey_ira_wake import build_embeddings
     import json
@@ -81,6 +90,11 @@ def main() -> int:
     voice_models_dir().mkdir(parents=True, exist_ok=True)
     download_whisper()
     download_oww_backbone()
+    try:
+        download_piper_amy()
+    except Exception as e:
+        print("WARN Piper Amy download skipped:", e)
+        print("  Run: python desktop/scripts/setup_piper_voice.py")
     try:
         build_wake_references()
     except Exception as e:

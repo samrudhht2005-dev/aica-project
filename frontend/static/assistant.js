@@ -409,9 +409,19 @@
 
     /** Soft spoken ack — does not steal listening focus / does not end the halo. */
     function softAck(text) {
+        const plain = plainTextForSpeech(text);
+        if (!plain) return;
+        // Desktop modern voice: Piper (native) — not robotic Web Speech.
+        if (hasNativeTts() && isModernVoiceBackend()
+            && typeof window.pywebview.api.speak_response_async === "function") {
+            try {
+                Promise.resolve(window.pywebview.api.speak_response_async(plain)).catch(function () {});
+            } catch (e) { /* ignore */ }
+            return;
+        }
         if (!window.speechSynthesis) return;
         try {
-            const utter = new SpeechSynthesisUtterance(plainTextForSpeech(text));
+            const utter = new SpeechSynthesisUtterance(plain);
             utter.lang = speechLang();
             utter.rate = 1.08;
             utter.volume = 0.9;
@@ -624,8 +634,8 @@
         let text = stripWake(rawText);
         if (!text) {
             if (fromVoice) {
+                startCommandListening({ holdMs: 20000, keepTts: true });
                 softAck(t("assistant.imListening", "I'm listening."));
-                startCommandListening({ holdMs: 20000 });
             }
             return;
         }
@@ -818,8 +828,20 @@
     function startDesktopCommandListening(opts) {
         const holdMs = (opts && opts.holdMs) || 25000;
         const silenceMs = (opts && opts.silenceMs) || 1400;
+        const keepTts = !!(opts && opts.keepTts);
         stopAmbient();
         stopCommandListening();
+        // Stop leftover TTS unless caller is about to play a wake soft-ack (keepTts).
+        if (!keepTts) {
+            stopSpeech();
+            if (hasDesktopVoiceApi()) {
+                try {
+                    if (typeof window.pywebview.api.cancel_speak === "function") {
+                        window.pywebview.api.cancel_speak();
+                    }
+                } catch (e) { /* ignore */ }
+            }
+        }
 
         listenSession = {
             active: true,
@@ -836,7 +858,7 @@
         setVoiceUI("listening");
         setIraMode("listening", t("assistant.listening", "Listening…"));
         startDesktopEventPoll();
-        iraLog("desktop_listen_start", { holdMs, silenceMs });
+        iraLog("desktop_listen_start", { holdMs, silenceMs, keepTts: keepTts });
 
         const api = window.pywebview.api;
         Promise.resolve(api.start_voice_listen(silenceMs, holdMs))
@@ -945,15 +967,17 @@
         }, 280);
 
         const leftover = stripWake(remainder || "");
-        softAck(t("assistant.imListening", "I'm listening."));
 
         if (leftover && leftover.length > 3) {
+            softAck(t("assistant.imListening", "I'm listening."));
             // Command came with the wake phrase — small beat then handle
             setTimeout(() => handleUserCommand(leftover, true), 200);
             return;
         }
 
-        startCommandListening({ holdMs: 20000, silenceMs: 1400, ignoreMs: 400 });
+        // Start listen first, then Piper soft-ack so it is not cancelled by listen start.
+        startCommandListening({ holdMs: 20000, silenceMs: 1400, ignoreMs: 400, keepTts: true });
+        softAck(t("assistant.imListening", "I'm listening."));
     }
 
     function startDesktopWakeListen() {

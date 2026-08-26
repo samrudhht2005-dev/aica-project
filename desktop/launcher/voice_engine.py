@@ -136,10 +136,21 @@ class ModernVoiceEngine:
             if self._wake is None:
                 self._wake = WakeDetector()
             self._wake.ensure_loaded()
+            tts_info = self._tts.ensure_loaded()
             self._init_error = None
             elapsed = time.perf_counter() - t0
-            vlog("voice_warm_up_ok", seconds=round(elapsed, 2))
-            return {"ok": True, "backend": self.BACKEND_NAME, "warm_up_s": round(elapsed, 2)}
+            vlog(
+                "voice_warm_up_ok",
+                seconds=round(elapsed, 2),
+                tts_engine=tts_info.get("engine"),
+                tts_ok=bool(tts_info.get("ok")),
+            )
+            return {
+                "ok": True,
+                "backend": self.BACKEND_NAME,
+                "warm_up_s": round(elapsed, 2),
+                "tts": tts_info,
+            }
         except Exception as e:
             self._init_error = str(e)
             vlog("voice_warm_up_failed", error=str(e), fallback="none")
@@ -388,6 +399,13 @@ class ModernVoiceEngine:
                 "error": warm.get("error") or "modern_voice_init_failed",
                 "backend": self.BACKEND_NAME,
             }
+
+        # Brief wait so a finishing nav/chat ack does not bleed into ambient wake
+        # (no long dead zone — max ~2.5s).
+        try:
+            self._tts.wait_idle(timeout=2.5)
+        except Exception:
+            pass
 
         self._command_stop.set()
         if self._command_thread and self._command_thread.is_alive():

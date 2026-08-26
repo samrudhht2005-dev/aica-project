@@ -34,6 +34,21 @@ if _fw_assets and _fw_assets.is_dir():
             rel = sub.relative_to(_fw_assets)
             datas.append((str(sub), str(Path("faster_whisper") / "assets" / rel.parent)))
 
+# Piper espeak-ng phonemizer data (required for neural TTS). Reuses project onnxruntime.
+_piper_espeak = ROOT / "venv" / "Lib" / "site-packages" / "piper" / "espeak-ng-data"
+if not _piper_espeak.is_dir():
+    try:
+        import piper as _piper
+
+        _piper_espeak = Path(_piper.__file__).resolve().parent / "espeak-ng-data"
+    except Exception:
+        _piper_espeak = None
+if _piper_espeak and _piper_espeak.is_dir():
+    for sub in _piper_espeak.rglob("*"):
+        if sub.is_file():
+            rel = sub.relative_to(_piper_espeak)
+            datas.append((str(sub), str(Path("piper") / "espeak-ng-data" / rel.parent)))
+
 hiddenimports = [
     "webview",
     "clr",
@@ -64,6 +79,10 @@ hiddenimports = [
     "sounddevice",
     "numpy",
     "huggingface_hub",
+    "piper",
+    "piper.voice",
+    "piper.config",
+    "pathvalidate",
 ]
 
 a = Analysis(
