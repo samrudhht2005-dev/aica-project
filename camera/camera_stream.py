@@ -63,6 +63,27 @@ class CameraStreamer:
         self.scan_line_y = 80
         self.scan_dir = 1
 
+        # --- Async YOLO worker (latest-frame only; never blocks MJPEG) ---
+        # Capture publishes raw frames here; worker overwrites unread frames (drop stale).
+        self._session_gen = 0
+        self._ai_thread = None
+        self._ai_stop = threading.Event()
+        self._ai_frame = None
+        self._ai_frame_event = threading.Event()
+        self._overlay_detections = []
+        self._yolo_target_interval = 0.20  # ~5 inferences/sec target
+        self._perf = {
+            "capture_frames": 0,
+            "capture_window_start": 0.0,
+            "capture_fps": 0.0,
+            "yolo_inferences": 0,
+            "yolo_window_start": 0.0,
+            "yolo_fps": 0.0,
+            "yolo_latency_ms_ema": 0.0,
+            "ai_frames_dropped": 0,
+            "ai_frames_processed": 0,
+        }
+
     def _ensure_qr_detector(self):
         if self._qr_detector is None:
             self._qr_detector = cv2.QRCodeDetector()
@@ -104,6 +125,8 @@ class CameraStreamer:
     def stop(self):
         self.running = False
         self.camera_powered = False
+        self._session_gen += 1
+        self._stop_ai_worker()
         if self.thread:
             self.thread.join(timeout=2)
         if self.cap:
@@ -128,6 +151,14 @@ class CameraStreamer:
             summary["scan_purpose"] = self.scan_purpose
             summary["auto_add_enabled"] = self.auto_add_enabled
             summary["camera_powered"] = self.camera_powered
+            summary["perf"] = {
+                "capture_fps": round(float(self._perf.get("capture_fps") or 0.0), 2),
+                "yolo_fps": round(float(self._perf.get("yolo_fps") or 0.0), 2),
+                "yolo_latency_ms": round(float(self._perf.get("yolo_latency_ms_ema") or 0.0), 1),
+                "ai_frames_dropped": int(self._perf.get("ai_frames_dropped") or 0),
+                "ai_frames_processed": int(self._perf.get("ai_frames_processed") or 0),
+                "yolo_target_fps": round(1.0 / self._yolo_target_interval, 1),
+            }
             return summary
 
     def set_auto_add(self, enabled: bool):
@@ -163,7 +194,10 @@ class CameraStreamer:
             return True
 
         if not powered:
+            # Bump generation first so an in-flight YOLO result is discarded.
+            self._session_gen += 1
             self.camera_powered = False
+            self._stop_ai_worker()
             if self.cap:
                 try:
                     self.cap.release()
@@ -173,6 +207,8 @@ class CameraStreamer:
             self.current_sim_product = None
             with self.lock:
                 self._latest_qr_event = None
+                self._overlay_detections = []
+                self._ai_frame = None
             self._publish_summary({
                 "state": "camera_off",
                 "message": "Camera is off. Turn it on to scan products.",
@@ -186,9 +222,13 @@ class CameraStreamer:
         # Preview + OpenCV QR still work if the detector is missing (no torch).
         detector = None if self.is_simulated else self._ensure_detector()
 
+        self._session_gen += 1
+        self._reset_perf()
         self.camera_powered = True
         self.camera_error = False
         if self.is_simulated:
+            with self.lock:
+                self._overlay_detections = []
             self._publish_summary({
                 "state": "scanning",
                 "message": "Simulation active — scanning…",
@@ -232,12 +272,18 @@ class CameraStreamer:
                     "Camera live — QR inventory scanning ready. "
                     f"AI product detection unavailable ({reason})."
                 )
+            with self.lock:
+                self._overlay_detections = []
+                self._ai_frame = None
             self._publish_summary({
                 "state": "scanning" if detector is not None else "preview",
                 "message": scan_msg,
                 "detections": [],
                 "accepted": [],
             })
+            # Start AI worker only when a real detector is available.
+            if detector is not None and getattr(detector, "model_ready", False):
+                self._start_ai_worker()
             print(f"Camera powered ON (index {self.camera_index}).")
             return True
         except Exception as e:
@@ -330,9 +376,11 @@ class CameraStreamer:
 
     def process_frame_qr_first(self, frame):
         """
-        QR-first pass used by the live camera loop and tests.
+        Synchronous QR-first pass for unit tests / one-shot callers.
 
-        Returns (frame, qr_token_or_None, ran_yolo_bool).
+        The live camera loop does NOT use this for YOLO — it uses
+        `_process_live_frame` + the async AI worker so MJPEG never waits
+        on inference. Returns (frame, qr_token_or_None, ran_yolo_bool).
         """
         now = time.time()
         throttled = (now - self._last_qr_scan_at) < self._qr_scan_interval
@@ -407,6 +455,242 @@ class CameraStreamer:
         })
         return frame, None, False
 
+    def _is_holding_qr(self) -> bool:
+        now = time.time()
+        with self.lock:
+            return bool(
+                self._latest_qr_event is not None
+                and self._last_qr_token
+                and (now - self._last_qr_emit_at) < self.qr_cooldown
+            )
+
+    def _reset_perf(self):
+        with self.lock:
+            self._perf = {
+                "capture_frames": 0,
+                "capture_window_start": time.time(),
+                "capture_fps": 0.0,
+                "yolo_inferences": 0,
+                "yolo_window_start": time.time(),
+                "yolo_fps": 0.0,
+                "yolo_latency_ms_ema": 0.0,
+                "ai_frames_dropped": 0,
+                "ai_frames_processed": 0,
+            }
+
+    def _note_capture_frame(self):
+        with self.lock:
+            p = self._perf
+            now = time.time()
+            if p["capture_window_start"] <= 0:
+                p["capture_window_start"] = now
+            p["capture_frames"] += 1
+            elapsed = now - p["capture_window_start"]
+            if elapsed >= 1.0:
+                p["capture_fps"] = p["capture_frames"] / elapsed
+                p["capture_frames"] = 0
+                p["capture_window_start"] = now
+
+    def _note_yolo_inference(self, latency_ms: float):
+        with self.lock:
+            p = self._perf
+            now = time.time()
+            if p["yolo_window_start"] <= 0:
+                p["yolo_window_start"] = now
+            p["yolo_inferences"] += 1
+            p["ai_frames_processed"] += 1
+            ema = p["yolo_latency_ms_ema"]
+            p["yolo_latency_ms_ema"] = latency_ms if ema <= 0 else (0.7 * ema + 0.3 * latency_ms)
+            elapsed = now - p["yolo_window_start"]
+            if elapsed >= 1.0:
+                p["yolo_fps"] = p["yolo_inferences"] / elapsed
+                p["yolo_inferences"] = 0
+                p["yolo_window_start"] = now
+
+    def _offer_ai_frame(self, frame_bgr):
+        """Publish newest raw frame for YOLO; overwrite unread frames (drop stale)."""
+        if frame_bgr is None:
+            return
+        if self.detector is None or not getattr(self.detector, "model_ready", False):
+            return
+        if self._ai_thread is None or not self._ai_thread.is_alive():
+            return
+        now = time.time()
+        with self.lock:
+            holding_qr = bool(
+                self._latest_qr_event is not None
+                and self._last_qr_token
+                and (now - self._last_qr_emit_at) < self.qr_cooldown
+            )
+            if holding_qr:
+                return
+            if self._ai_frame is not None:
+                self._perf["ai_frames_dropped"] += 1
+            self._ai_frame = frame_bgr
+            self._ai_frame_event.set()
+
+    def _start_ai_worker(self):
+        self._stop_ai_worker()
+        self._ai_stop.clear()
+        with self.lock:
+            self._ai_frame = None
+            self._overlay_detections = []
+        self._ai_frame_event.clear()
+        gen = self._session_gen
+        self._ai_thread = threading.Thread(
+            target=self._ai_worker_loop,
+            args=(gen,),
+            daemon=True,
+            name="aica-yolo-worker",
+        )
+        self._ai_thread.start()
+        logging.info("YOLO AI worker started (session=%s, target=%.1f FPS)", gen, 1.0 / self._yolo_target_interval)
+
+    def _stop_ai_worker(self):
+        self._ai_stop.set()
+        self._ai_frame_event.set()
+        t = self._ai_thread
+        if t is not None and t.is_alive():
+            t.join(timeout=3.0)
+        self._ai_thread = None
+        with self.lock:
+            self._ai_frame = None
+            self._overlay_detections = []
+
+    def _ai_worker_loop(self, session_gen: int):
+        """Latest-frame YOLO worker. Never owns VideoCapture."""
+        last_infer_at = 0.0
+        while not self._ai_stop.is_set():
+            if session_gen != self._session_gen or not self.camera_powered:
+                break
+
+            self._ai_frame_event.wait(timeout=0.1)
+            if self._ai_stop.is_set():
+                break
+            if session_gen != self._session_gen or not self.camera_powered:
+                break
+
+            with self.lock:
+                frame = self._ai_frame
+                self._ai_frame = None
+                self._ai_frame_event.clear()
+
+            if frame is None:
+                continue
+
+            # Pace YOLO independently of capture; always take newest after wait.
+            now = time.time()
+            wait = self._yolo_target_interval - (now - last_infer_at)
+            if wait > 0:
+                time.sleep(wait)
+                with self.lock:
+                    if self._ai_frame is not None:
+                        self._perf["ai_frames_dropped"] += 1
+                        frame = self._ai_frame
+                        self._ai_frame = None
+                        self._ai_frame_event.clear()
+
+            if session_gen != self._session_gen or not self.camera_powered:
+                break
+            if self._is_holding_qr():
+                continue
+
+            detector = self.detector
+            if detector is None or not getattr(detector, "model_ready", False):
+                continue
+
+            t0 = time.perf_counter()
+            try:
+                detections = detector.detect(frame)
+                summary = detector.summarize(detections)
+            except Exception as e:
+                logging.error("YOLO worker inference failed: %s", e)
+                continue
+            latency_ms = (time.perf_counter() - t0) * 1000.0
+            last_infer_at = time.time()
+            self._note_yolo_inference(latency_ms)
+
+            if session_gen != self._session_gen or not self.camera_powered:
+                break
+            # QR may have won while we were inferring — do not clobber QR summary.
+            if self._is_holding_qr():
+                continue
+
+            with self.lock:
+                self._overlay_detections = list(detections or [])
+            self._publish_summary(summary)
+            if self.auto_add_enabled and self.detection_callback:
+                for det in summary.get("accepted") or []:
+                    self._handle_detection(det["label"], det["confidence"])
+
+        logging.info("YOLO AI worker stopped (session=%s)", session_gen)
+
+    def _draw_qr_overlay(self, frame, points):
+        if points is None:
+            return frame
+        try:
+            pts = points.astype(int).reshape(-1, 2)
+            if len(pts) >= 4:
+                cv2.polylines(frame, [pts], True, (46, 204, 113), 2)
+                cv2.putText(
+                    frame,
+                    "AICA QR",
+                    (int(pts[0][0]), max(20, int(pts[0][1]) - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (46, 204, 113),
+                    2,
+                    cv2.LINE_AA,
+                )
+        except Exception:
+            pass
+        return frame
+
+    def _process_live_frame(self, frame):
+        """
+        Fast capture-path processing: QR + last YOLO overlay only.
+        Never runs detector.detect(); offers raw frame to the AI worker.
+        """
+        raw_for_ai = frame.copy()
+        now = time.time()
+        throttled = (now - self._last_qr_scan_at) < self._qr_scan_interval
+        if throttled:
+            if self._is_holding_qr():
+                with self.lock:
+                    self._overlay_detections = []
+                return frame, self._last_qr_token
+            token, points = None, None
+        else:
+            token, points = self.detect_aica_qr_token(frame, force=True)
+
+        if token:
+            self._emit_qr_event(token)
+            frame = self._draw_qr_overlay(frame, points)
+            with self.lock:
+                self._overlay_detections = []
+                self._ai_frame = None
+            if self.detector is not None and getattr(self.detector, "model_ready", False):
+                msg = "AICA QR ticket detected — resolving inventory…"
+                state = "scanning"
+            else:
+                msg = "AICA QR ticket detected — resolving inventory… (AI product detection unavailable)"
+                state = "preview"
+            self._publish_summary({
+                "state": state,
+                "message": msg,
+                "detections": [],
+                "accepted": [],
+            })
+            return frame, token
+
+        # No QR — keep stream smooth; AI worker updates detections asynchronously.
+        self._offer_ai_frame(raw_for_ai)
+        with self.lock:
+            dets = list(self._overlay_detections)
+        if dets:
+            frame = self._draw_detections(frame, dets)
+        return frame, None
+
     def _idle_frame(self, message: str = "CAMERA OFF"):
         h, w = 480, 640
         frame = np.zeros((h, w, 3), dtype=np.uint8)
@@ -470,7 +754,8 @@ class CameraStreamer:
                             print("Lost camera stream. Powering OFF.")
                             self.set_camera_power(False)
                             continue
-                        frame, _token, _yolo = self.process_frame_qr_first(frame)
+                        # QR + overlay only — YOLO runs on a separate worker.
+                        frame, _token = self._process_live_frame(frame)
                 except Exception as e:
                     logging.error("Error reading camera frame: %s", e)
                     self.set_camera_power(False)
@@ -478,9 +763,11 @@ class CameraStreamer:
 
             with self.lock:
                 self.latest_frame = frame.copy()
+            self._note_capture_frame()
 
+            # Pace display ~30 FPS from capture cost only (not YOLO latency).
             elapsed = time.time() - start_time
-            sleep_time = max(0.033 - elapsed, 0.005)
+            sleep_time = max(0.033 - elapsed, 0.001)
             time.sleep(sleep_time)
 
     def _generate_simulated_frame(self):
