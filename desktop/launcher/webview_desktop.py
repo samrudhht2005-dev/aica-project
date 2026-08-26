@@ -23,6 +23,7 @@ def install_webview2_permission_hook() -> None:
     """
     Auto-allow Microphone (and Camera) permission prompts inside WebView2 so
     Web Speech API / getUserMedia can run for Hey IRA without a dead permission dialog.
+    Also routes WebView2 file downloads to the user's Downloads folder.
     """
     try:
         from webview.platforms.edgechromium import EdgeChrome
@@ -66,6 +67,35 @@ def install_webview2_permission_hook() -> None:
             logging.info("AICA: WebView2 microphone/camera permission auto-allow installed")
         except Exception as ex:
             logging.warning("AICA: could not hook WebView2 PermissionRequested: %s", ex)
+
+        # Native download safety net (direct PDF navigation / Content-Disposition)
+        try:
+            from pathlib import Path
+
+            from desktop.launcher.user_downloads import default_downloads_dir, sanitize_download_filename, unique_path
+
+            def _on_download_starting(_s, e):
+                try:
+                    suggested = ""
+                    try:
+                        suggested = str(e.ResultFilePath or "")
+                    except Exception:
+                        suggested = ""
+                    name = sanitize_download_filename(Path(suggested).name if suggested else "aica_download.pdf")
+                    dest = unique_path(default_downloads_dir(), name)
+                    e.ResultFilePath = str(dest)
+                    try:
+                        e.Handled = False  # allow WebView2 to perform the download to ResultFilePath
+                    except Exception:
+                        pass
+                    logging.info("AICA: WebView2 download routed to %s", dest)
+                except Exception as ex:
+                    logging.warning("AICA: DownloadStarting handler error: %s", ex)
+
+            sender.CoreWebView2.DownloadStarting += _on_download_starting
+            logging.info("AICA: WebView2 DownloadStarting hook installed")
+        except Exception as ex:
+            logging.warning("AICA: could not hook WebView2 DownloadStarting: %s", ex)
 
     EdgeChrome.on_webview_ready = on_webview_ready
     EdgeChrome._aica_perm_hooked = True

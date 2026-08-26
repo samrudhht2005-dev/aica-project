@@ -171,3 +171,20 @@ class DesktopVoiceBridge:
                 "active": False,
                 "updater_started": False,
             }
+
+    def save_user_download(self, filename: str, content_b64: str) -> dict[str, Any]:
+        """
+        Save a generated PDF/file from the WebView (invoice, weigh label, etc.).
+        Called from frontend when AICA_DESKTOP is set — avoids broken blob downloads.
+        """
+        try:
+            from desktop.launcher.user_downloads import decode_download_payload, save_bytes_with_dialog
+
+            data = decode_download_payload(content_b64)
+            return save_bytes_with_dialog(self._window, filename, data)
+        except Exception as e:
+            return {
+                "ok": False,
+                "cancelled": False,
+                "error": str(e) or "Could not save file",
+            }

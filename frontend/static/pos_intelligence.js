@@ -397,14 +397,22 @@
             if (filenameMatch && filenameMatch[1]) {
                 filename = decodeURIComponent(filenameMatch[1].trim());
             }
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            window.URL.revokeObjectURL(url);
+            if (typeof window.AICA_downloadBlob === "function") {
+                const saved = await window.AICA_downloadBlob(blob, filename);
+                if (saved && saved.cancelled) return;
+                if (saved && !saved.ok && saved.error) {
+                    alert(saved.error);
+                }
+            } else {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+            }
         } catch (e) {
             alert(t("pos.downloadFailed", "Could not download this invoice."));
         }

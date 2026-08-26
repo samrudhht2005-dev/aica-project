@@ -661,7 +661,28 @@
         const pdf = document.getElementById('downloadPdfBtn');
         pdf.href = '/api/weigh-tickets/' + ticket.id + '/label.pdf';
         pdf.setAttribute('download', 'aica_weigh_label_' + ticket.id + '.pdf');
+        pdf.dataset.ticketId = String(ticket.id);
     }
+
+    document.getElementById('downloadPdfBtn')?.addEventListener('click', async function (e) {
+        // Desktop WebView often ignores <a download>; fetch + AICA_downloadBlob instead.
+        if (!(window.AICA_DESKTOP && typeof window.AICA_downloadUrl === 'function')) return;
+        e.preventDefault();
+        const href = this.getAttribute('href');
+        if (!href || href === '#') return;
+        const hint = this.getAttribute('download') || ('aica_weigh_label_' + (this.dataset.ticketId || '') + '.pdf');
+        try {
+            const saved = await window.AICA_downloadUrl(href, hint);
+            if (saved && saved.cancelled) return;
+            if (saved && saved.ok && saved.folder) {
+                alert('Label saved to:\n' + saved.folder);
+            } else if (saved && !saved.ok && saved.error) {
+                alert(saved.error);
+            }
+        } catch (err) {
+            alert(err && err.message ? err.message : 'Could not download PDF label.');
+        }
+    });
 
     form.addEventListener('submit', async function (e) {
         e.preventDefault();

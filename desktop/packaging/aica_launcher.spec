@@ -40,6 +40,7 @@ hiddenimports = [
     "backend.runtime_paths",
     "desktop.launcher.webview_desktop",
     "desktop.launcher.voice_bridge",
+    "desktop.launcher.user_downloads",
     "desktop.launcher.voice_engine",
     "desktop.launcher.voice_legacy",
     "desktop.launcher.voice_stt",

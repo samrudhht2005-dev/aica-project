@@ -500,9 +500,61 @@ label.form-label {
     margin-bottom: 6px;
 }
 .form-check-label { color: var(--text-secondary); }
+/* Avoid white-blob switches: brand accent is near-white in dark UI */
+.form-check-input {
+    background-color: #2a2a2a;
+    border-color: rgba(255, 255, 255, 0.22);
+    cursor: pointer;
+}
+.form-check-input:focus {
+    border-color: rgba(138, 155, 181, 0.55);
+    box-shadow: 0 0 0 0.2rem rgba(138, 155, 181, 0.18);
+}
 .form-check-input:checked {
-    background-color: var(--accent);
-    border-color: var(--accent);
+    background-color: #8a9bb5;
+    border-color: #8a9bb5;
+}
+
+/* Camera power switch — clearly distinct OFF / ON in dark UI */
+#cameraPowerToggle.form-check-input {
+    width: 2.75em;
+    height: 1.4em;
+    margin-top: 0;
+    background-color: #1a1a1a;
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%238a8a8a'/%3e%3c/svg%3e");
+    transition: background-color 0.18s ease, border-color 0.18s ease, background-position 0.18s ease;
+}
+#cameraPowerToggle.form-check-input:checked {
+    background-color: #8a9bb5;
+    border-color: #9aabc4;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23050505'/%3e%3c/svg%3e");
+}
+#cameraPowerToggle.form-check-input:focus {
+    box-shadow: 0 0 0 0.2rem rgba(138, 155, 181, 0.22);
+}
+#cameraPowerLabel {
+    min-width: 5.5rem;
+    letter-spacing: 0.02em;
+}
+#cameraPowerToggle:checked + #cameraPowerLabel,
+.form-check-input#cameraPowerToggle:checked ~ #cameraPowerLabel {
+    color: #e8eef6;
+}
+#cameraPowerToggle:not(:checked) + #cameraPowerLabel {
+    color: var(--text-muted);
+}
+
+/* Nearby camera toolbar selects — readable on dark stage */
+.pos-stage-toolbar .form-select {
+    background-color: #141414 !important;
+    color: var(--text) !important;
+    border-color: rgba(255, 255, 255, 0.16) !important;
+}
+.pos-stage-toolbar .badge.bg-secondary {
+    background: #2a2a2a !important;
+    color: #c8c8c8 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .modern-btn,

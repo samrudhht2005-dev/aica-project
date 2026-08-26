@@ -934,9 +934,6 @@ async function submitTransaction() {
                 }
             } else {
                 const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
                 const contentDisposition = response.headers.get('Content-Disposition');
                 let filename = 'invoice.pdf';
                 if (contentDisposition) {
@@ -945,12 +942,26 @@ async function submitTransaction() {
                         filename = filenameMatch[1];
                     }
                 }
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-                alert('Payment received. Invoice downloaded.');
+                if (typeof window.AICA_downloadBlob === 'function') {
+                    const saved = await window.AICA_downloadBlob(blob, filename);
+                    if (saved && saved.cancelled) {
+                        alert('Payment received. Invoice save was cancelled.');
+                    } else if (saved && saved.ok && saved.mode === 'desktop' && saved.folder) {
+                        alert('Payment received. Invoice saved to:\n' + saved.folder);
+                    } else {
+                        alert('Payment received. Invoice downloaded.');
+                    }
+                } else {
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    alert('Payment received. Invoice downloaded.');
+                }
             }
             cartItems = [];
             renderCart();
