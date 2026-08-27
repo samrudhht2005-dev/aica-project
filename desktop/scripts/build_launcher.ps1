@@ -20,7 +20,7 @@ Write-Host "==> Ensuring Piper Amy voice (required for launcher / IRA TTS)"
 & $Py (Join-Path $Root "desktop\scripts\setup_piper_voice.py")
 if ($LASTEXITCODE -ne 0) { throw "Piper Amy setup/download failed (exit $LASTEXITCODE)" }
 & $Py (Join-Path $Root "desktop\scripts\setup_piper_voice.py") --verify-only --require-espeak
-if ($LASTEXITCODE -ne 0) { throw "Piper Amy verification failed — refuse to build launcher without Amy." }
+if ($LASTEXITCODE -ne 0) { throw "Piper Amy verification failed - refuse to build launcher without Amy." }
 
 $prevEap = $ErrorActionPreference
 $ErrorActionPreference = "Continue"

@@ -42,6 +42,19 @@ if (-not $Iscc) {
 }
 
 $Iss = Join-Path $Root "desktop\packaging\aica_setup.iss"
+
+# Strip dist-info license trees (runtime-unused; deeply nested LICENSE paths break Inno Setup on Windows)
+$Internal = Join-Path $Root "dist\AICA.Engine\_internal"
+if (Test-Path $Internal) {
+    Get-ChildItem $Internal -Directory -Filter "*dist-info" | ForEach-Object {
+        $lic = Join-Path $_.FullName "licenses"
+        if (Test-Path $lic) {
+            Write-Host "==> Removing unused license metadata: $($_.Name)\licenses"
+            Remove-Item -Recurse -Force $lic
+        }
+    }
+}
+
 Write-Host "==> Inno Setup: $Iscc /DMyAppVersion=$Version"
 & $Iscc "/DMyAppVersion=$Version" $Iss
 $Setup = Join-Path $Root "dist\AICA_Setup_$Version.exe"
