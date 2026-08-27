@@ -25,7 +25,7 @@
     "posHistory": "Sales History",
     "posInvoices": "Invoices",
     "posProducts": "Product Performance",
-    "switchToPos": "Switch to POS",
+    "switchToPos": "Switch to PoS",
     "switchToWeigh": "Switch to Weigh & QR",
     "switchToOrg": "Switch to Organization",
     "profile": "Edit Profile",
@@ -34,7 +34,7 @@
   },
   "iface": {
     "choose": "Choose your workspace",
-    "posTitle": "POS",
+    "posTitle": "PoS",
     "posDesc": "Scan QR tickets, manage the cart, and complete checkout.",
     "weighTitle": "Weigh & QR",
     "weighDesc": "Weigh products, generate QR tickets, and print labels.",
@@ -93,7 +93,7 @@
     "orgTitle": "Organization Settings",
     "orgSub": "Legal identity used for GST, income tax, and every report",
     "salesTitle": "Sales",
-    "salesSub": "Live POS sales from your organisation’s books"
+    "salesSub": "Live PoS sales from your organisation’s books"
   },
   "profile": {
     "fullName": "Full name",
@@ -186,7 +186,7 @@
     "from": "From",
     "to": "To",
     "apply": "Apply",
-    "historyHint": "Completed POS sales with line items from your books.",
+    "historyHint": "Completed PoS sales with line items from your books.",
     "invoicesHint": "Tax invoices generated from completed sales. Download the PDF document here.",
     "customer": "Customer",
     "walkInCustomer": "Walk-in Customer",
@@ -196,10 +196,10 @@
   },
   "sales": {
     "title": "Sales",
-    "subtitle": "Live POS sales from your organisation’s books",
+    "subtitle": "Live PoS sales from your organisation’s books",
     "empty": "No sales recorded yet.",
-    "emptyHint": "Complete a checkout in POS and this page will update automatically.",
-    "openPos": "Open POS",
+    "emptyHint": "Complete a checkout in PoS and this page will update automatically.",
+    "openPos": "Open PoS",
     "revenue": "Total revenue",
     "txCount": "Transactions",
     "avgTicket": "Average ticket",

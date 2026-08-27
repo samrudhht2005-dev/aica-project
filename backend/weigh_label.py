@@ -110,7 +110,7 @@ def create_weigh_label_pdf(ticket: WeighTicket) -> bytes:
 
     pdf.set_xy(left, top + height - 12)
     pdf.set_font("Helvetica", "I", 7)
-    pdf.cell(width, 5, "Scan at POS. Price/weight verified by AICA server.", align="C")
+    pdf.cell(width, 5, "Scan at PoS. Price/weight verified by AICA server.", align="C")
 
     raw = pdf.output(dest="S")
     if isinstance(raw, str):

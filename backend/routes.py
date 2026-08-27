@@ -1395,7 +1395,7 @@ def build_sales_payload(db: Session, org: Organization) -> dict:
             "gst_amount": round(float(t.gst_amount or 0), 2),
             "total_amount": round(float(t.total_amount or 0), 2),
             "taxable": round(float(t.total_amount or 0) - float(t.gst_amount or 0), 2),
-            "payment_method": "POS",
+            "payment_method": "PoS",
         })
 
     products = [
@@ -1457,7 +1457,7 @@ def _invoice_number(tx_id: int) -> str:
 
 def _tx_payment_method(tx: Transaction) -> str:
     # Payment method is not persisted on Transaction historically; POS records as completed sale.
-    return "POS"
+    return "PoS"
 
 
 def build_pos_intelligence(db: Session, org: Organization, range_key: str = "7", date_from: str = None, date_to: str = None) -> dict:
@@ -1944,7 +1944,7 @@ def collect_rag_rules(question: str) -> str:
 
 ASSISTANT_PAGES = {
     "dashboard": {"path": "/", "label": "Dashboard", "focus": "live P&L, GST payable, and recent books"},
-    "pos": {"path": "/pos", "label": "POS checkout", "focus": "recording taxable sales, GST on supplies, and stock deduction"},
+    "pos": {"path": "/pos", "label": "PoS checkout", "focus": "recording taxable sales, GST on supplies, and stock deduction"},
     "sales": {"path": "/sales", "label": "Sales", "focus": "sales history, revenue trends, product performance, and GST collected on supplies"},
     "expenses": {"path": "/expenses", "label": "Expenses", "focus": "recording vendor bills, GST ITC, business vs personal, revenue vs capital"},
     "employees": {"path": "/employees", "label": "Payroll", "focus": "employee master, monthly CTC, EPF, and Section 80JJAA"},
@@ -2939,7 +2939,7 @@ def voice_assist(text_query: str = Form(...)):
         
     try:
         prompt = (
-            f"You are the voice assistant for an AI POS billing system. The user verbally said: '{text_query}'. "
+            f"You are the voice assistant for an AI PoS billing system. The user verbally said: '{text_query}'. "
             "Interpret this spoken sentence and translate it into a JSON action block. "
             "Available actions:\n"
             "1. 'add_to_cart' with parameters: 'product' (string, e.g. 'Maggi', 'Lays', 'Milk'), 'quantity' (float, default 1.0)\n"

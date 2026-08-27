@@ -48,11 +48,11 @@
         </div>
     </header>
 
-    {{ page_intro("How this tax working is built", "Start with FY sales from POS. Subtract business bills plus annualised payroll (12 × current monthly payroll; personal spends stay out). Then subtract Section 32 depreciation and Section 80JJAA. The remainder is taxable income. Old regime uses ~25% + 4% cess. 115BAA uses 22% + 10% surcharge + 4% cess. All figures are absolute INR.") }}
+    {{ page_intro("How this tax working is built", "Start with FY sales from PoS. Subtract business bills plus annualised payroll (12 × current monthly payroll; personal spends stay out). Then subtract Section 32 depreciation and Section 80JJAA. The remainder is taxable income. Old regime uses ~25% + 4% cess. 115BAA uses 22% + 10% surcharge + 4% cess. All figures are absolute INR.") }}
 
     <div class="metric-strip">
         <div class="metric-cell">
-            <span class="metric-cell-label">Sales {{ ca_tip("Sales", "POS / invoice turnover.") }}</span>
+            <span class="metric-cell-label">Sales {{ ca_tip("Sales", "PoS / invoice turnover.") }}</span>
             <p class="metric-cell-value">₹{{ "{:,.2f}".format(sales_total) }}</p>
         </div>
         <div class="metric-cell">

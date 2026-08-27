@@ -345,7 +345,7 @@
                     <td>${r.date}</td>
                     <td>${r.time}</td>
                     <td class="text-truncate" style="max-width:280px" title="${String(r.products || "").replace(/"/g, "&quot;")}">${r.products}</td>
-                    <td>${r.payment_method || "POS"}</td>
+                    <td>${r.payment_method || "PoS"}</td>
                     <td>${inr(r.grand_total)}</td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-primary" data-invoice-id="${r.id}">${t("pos.viewSale", "View sale")}</button>

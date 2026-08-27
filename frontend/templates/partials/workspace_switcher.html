@@ -3,13 +3,13 @@
     {% if current_workspace != 'pos' %}
     <form method="POST" action="/switch-interface" class="sidebar-switch-form aica-ws-form">
         <input type="hidden" name="target" value="pos">
-        <button type="submit" class="aica-ws-btn" data-i18n="nav.switchToPos" title="POS">
-            <i class="bi bi-cart-check-fill"></i><span>POS</span>
+        <button type="submit" class="aica-ws-btn" data-i18n="nav.switchToPos" title="PoS">
+            <i class="bi bi-cart-check-fill"></i><span>PoS</span>
         </button>
     </form>
     {% else %}
     <div class="aica-ws-btn is-active" aria-current="page">
-        <i class="bi bi-cart-check-fill"></i><span data-i18n="iface.posTitle">POS</span>
+        <i class="bi bi-cart-check-fill"></i><span data-i18n="iface.posTitle">PoS</span>
     </div>
     {% endif %}
 

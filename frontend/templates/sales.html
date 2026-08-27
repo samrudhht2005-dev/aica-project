@@ -22,7 +22,7 @@
     <header class="page-mast">
         <div>
             <h1 class="page-mast-title" data-i18n="sales.title">Sales</h1>
-            <p class="page-mast-sub" data-i18n="sales.subtitle">Live POS sales from your organisation’s books</p>
+            <p class="page-mast-sub" data-i18n="sales.subtitle">Live PoS sales from your organisation’s books</p>
         </div>
     </header>
 
@@ -30,7 +30,7 @@
     <section class="data-plane text-center py-5">
         <i class="bi bi-receipt" style="font-size: 2.5rem; color: var(--text-muted);"></i>
         <h4 class="mt-3" data-i18n="sales.empty">No sales recorded yet.</h4>
-        <p class="text-muted mb-0" data-i18n="sales.emptyHint">Complete a checkout in POS and this page will update automatically.</p>
+        <p class="text-muted mb-0" data-i18n="sales.emptyHint">Complete a checkout in PoS and this page will update automatically.</p>
     </section>
     {% else %}
     <div class="metric-strip">
@@ -67,7 +67,7 @@
             <div class="d-flex justify-content-between py-2 border-bottom"><span>CGST</span><strong>₹{{ "{:,.2f}".format(sales.output_gst_split.cgst) }}</strong></div>
             <div class="d-flex justify-content-between py-2 border-bottom"><span>SGST</span><strong>₹{{ "{:,.2f}".format(sales.output_gst_split.sgst) }}</strong></div>
             <div class="d-flex justify-content-between py-2"><span>IGST</span><strong>₹{{ "{:,.2f}".format(sales.output_gst_split.igst) }}</strong></div>
-            <p class="small text-muted mt-2 mb-0">Split assumes intra-state supplies (CGST/SGST). Combined GST is stored on each POS bill.</p>
+            <p class="small text-muted mt-2 mb-0">Split assumes intra-state supplies (CGST/SGST). Combined GST is stored on each PoS bill.</p>
         </section>
     </div>
 

@@ -78,7 +78,7 @@
         </div>
     </header>
 
-    {{ page_intro("What this dashboard is", "This is your live P&amp;L snapshot — the same picture a CA would open first. Sales come from POS bills, costs from business expenses plus this month’s payroll, and personal spends are kept out so they do not reduce taxable profit. Press any ? to see what a number means.") }}
+    {{ page_intro("What this dashboard is", "This is your live P&amp;L snapshot — the same picture a CA would open first. Sales come from PoS bills, costs from business expenses plus this month’s payroll, and personal spends are kept out so they do not reduce taxable profit. Press any ? to see what a number means.") }}
     {% if sales_total == 0 and expenses_total == 0 %}
     <div class="page-intro mb-4" style="border-left-color: var(--success);">
         <div class="page-intro-icon"><i class="bi bi-inbox"></i></div>
@@ -91,7 +91,7 @@
 
     <div class="metric-strip metric-strip-3">
         <div class="metric-cell">
-            <span class="metric-cell-label">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised this FY (POS / sales). Absolute INR — not lakhs. Starting point for GST output tax and income-tax profit.") }}</span>
+            <span class="metric-cell-label">Turnover (Sales) {{ ca_tip("Turnover", "Total value of invoices you raised this FY (PoS / sales). Absolute INR — not lakhs. Starting point for GST output tax and income-tax profit.") }}</span>
             <p class="metric-cell-value money-neutral">{{ sales_total | inr }}</p>
         </div>
         <div class="metric-cell">
